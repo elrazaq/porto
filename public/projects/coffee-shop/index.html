@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SAMAN Specialty Coffee Roasters | Artisan Roastery &amp; Nusantara Beans</title>
+  <meta name="description" content="Artisan coffee roasters dari Tanjung Pinang, Kepulauan Riau sejak 2019. Menyediakan 9+ Kopi Nusantara pilihan, metode sangrai 3-fase presisi, manual brew specialty, dan inkubasi UMKM kopi.">
+
+  <!-- Fonts: Playfair Display & Plus Jakarta Sans & Space Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;0,900;1,400;1,700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- =========================================================================
+       NAVIGATION BAR (Sleek Single-Line Header)
+       ========================================================================= -->
+  <header class="site-header">
+    <div class="container">
+      <a href="#" class="brand-logo">
+        <svg class="brand-emblem" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="3">
+          <circle cx="50" cy="50" r="44" stroke="currentColor" stroke-width="2" opacity="0.3" />
+          <path d="M50 20 C65 20, 78 33, 78 50 C78 68, 62 82, 50 82 C38 82, 22 68, 22 50 C22 33, 35 20, 50 20 Z" fill="rgba(184, 112, 48, 0.12)" stroke="currentColor" />
+          <path d="M50 22 C40 38, 40 62, 50 80" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+          <circle cx="34" cy="48" r="3" fill="currentColor" />
+          <circle cx="66" cy="52" r="3" fill="currentColor" />
+        </svg>
+        <div class="brand-text">
+          <h1>SAMAN ROASTERS</h1>
+          <span>Artisan Roastery &bull; Est. 2019</span>
+        </div>
+      </a>
+
+      <!-- Desktop Nav Links (Clean, Short, 1-Line) -->
+      <ul class="nav-menu">
+        <li><a href="#story" class="nav-link">Story</a></li>
+        <li><a href="#beans" class="nav-link">Biji Nusantara</a></li>
+        <li><a href="#brew" class="nav-link">Metode Seduh</a></li>
+        <li><a href="#roastery" class="nav-link">Roastery 3-Fase</a></li>
+        <li><a href="#wholesale" class="nav-link">Wholesale</a></li>
+        <li><a href="#contact" class="nav-link">Lokasi &amp; Jam</a></li>
+      </ul>
+
+      <!-- Nav Action & Mobile Hamburger Button -->
+      <div class="nav-actions">
+        <a href="#rsvp" class="btn btn-primary btn-sm btn-header-rsvp">
+          Reservasi
+        </a>
+
+        <button type="button" class="mobile-menu-btn" id="mobileMenuToggle" aria-label="Toggle Menu">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Mobile Flyout Drawer -->
+    <div class="mobile-drawer" id="mobileDrawer">
+      <a href="#story" class="nav-link mobile-link">Story &amp; Filosofi</a>
+      <a href="#beans" class="nav-link mobile-link">Koleksi Biji Kopi Nusantara</a>
+      <a href="#brew" class="nav-link mobile-link">Metode Seduh V60 &amp; Vietnam</a>
+      <a href="#roastery" class="nav-link mobile-link">Proses Sangrai 3-Fase</a>
+      <a href="#wholesale" class="nav-link mobile-link">Wholesale &amp; Kemitraan UMKM</a>
+      <a href="#contact" class="nav-link mobile-link">Lokasi &amp; Jam Operasional</a>
+      <a href="#rsvp" class="btn btn-primary mobile-link" style="margin-top: 0.5rem; text-align: center; justify-content: center;">Reservasi Meja / RSVP</a>
+    </div>
+  </header>
+
+  <!-- =========================================================================
+       HERO SECTION (Bright, Fresh, Warm Daylight Aesthetic)
+       ========================================================================= -->
+  <section class="hero-section" id="hero">
+    <div class="hero-bg-wrapper">
+      <img src="/samanko/8ebe27_359d279b8769458095b3163c92827d4a.jpg" alt="Saman Specialty Roasters Cafe" class="hero-bg-img" />
+      <div class="hero-bg-overlay"></div>
+    </div>
+
+    <div class="container">
+      <div class="hero-content">
+        <span class="tag-badge">Tanjung Pinang, Kepulauan Riau &bull; Est. 2019</span>
+        <h2 class="hero-title">
+          Merayakan Citarasa <em>Kopi Nusantara</em> Lewat Sangrai Presisi.
+        </h2>
+        <p class="hero-subtitle">
+          Hadir sebagai wadah eksplorasi kopi otentik dari Sabang sampai Merauke. Menghubungkan dedikasi petani lokal, sains sangrai 3-fase, dan kenikmatan manual brew kelas dunia dalam setiap tegukan.
+        </p>
+
+        <div class="hero-ctas">
+          <a href="#beans" class="btn btn-primary">
+            Jelajahi 9 Biji Nusantara
+          </a>
+          <a href="#roastery" class="btn btn-outline">
+            Filosofi 3-Fase Sangrai
+          </a>
+        </div>
+
+        <div class="hero-stats-bar">
+          <div class="stat-item">
+            <h4>9+</h4>
+            <p>Single Origin Nusantara</p>
+          </div>
+          <div class="stat-item">
+            <h4>3-Phase</h4>
+            <p>Custom Roast Profile</p>
+          </div>
+          <div class="stat-item">
+            <h4>1700m</h4>
+            <p>Peak Elevation Kerinci</p>
+          </div>
+          <div class="stat-item">
+            <h4>UMKM</h4>
+            <p>Roastery Incubator</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       BRAND STORY & PHILOSOPHY SECTION
+       ========================================================================= -->
+  <section class="section section-tint" id="story">
+    <div class="container">
+      <div class="story-grid">
+        <div>
+          <span class="tag-badge">Our Humble Origins</span>
+          <h2 style="font-size: 2.3rem; margin: 0.8rem 0 1.2rem 0;">Story of Saman Roasters</h2>
+          <p class="story-lead">
+            Meningkatnya tingkat konsumsi kopi juga tidak terlepas dari gaya hidup masyarakat urban yang gemar berkumpul, pada tahun 2019 di Tanjung Pinang, Kepulauan Riau.
+          </p>
+          <p class="story-paragraph">
+            Saman Coffee Roasters hadir menyediakan berbagai Kopi Nusantara dan berbagai metode penyeduhan kopi. Tidak hanya demikian, Saman Coffee Roasters sendiri juga memiliki tempat produksi sangrai kopi dan pastry higienis sehingga menjadi wadah nyata bagi pengusaha kopi pemula maupun UMKM yang ingin memulai bisnis kopi berkualitas.
+          </p>
+
+          <div class="pillar-grid">
+            <div class="pillar-card">
+              <svg class="pillar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 8h1a4 4 0 1 1 0 8h-1M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/>
+                <line x1="6" y1="2" x2="6" y2="4"/><line x1="10" y1="2" x2="10" y2="4"/><line x1="14" y1="2" x2="14" y2="4"/>
+              </svg>
+              <h4>Espresso Based</h4>
+              <p>Ekstraksi presisi dengan rasio seimbang untuk fondasi kopi mantap.</p>
+            </div>
+            <div class="pillar-card">
+              <svg class="pillar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M8 2h8l2 9H6l2-9ZM6 11v8a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3v-8"/>
+              </svg>
+              <h4>Milk Based</h4>
+              <p>Perpaduan susu segar berbusa mikro lembut (silky latte art texture).</p>
+            </div>
+            <div class="pillar-card">
+              <svg class="pillar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
+              </svg>
+              <h4>Manual Brew</h4>
+              <p>V60 Pour Over, Aeropress, &amp; Syphon menonjolkan notes buah alami.</p>
+            </div>
+            <div class="pillar-card">
+              <svg class="pillar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+              </svg>
+              <h4>Vietnam Roast</h4>
+              <p>Tradisi robusta sangrai mentega khas dengan seduhan Vietnam Drip.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="story-visual-wrap">
+          <img src="/samanko/8ebe27_59f990dd688640759b6b8251eebae3be.jpg" alt="Natural Sun-Dried Coffee Fermentation" class="story-visual-main" />
+          <div class="story-badge-float">
+            <span>Specialty Craft</span>
+            <p>100% Biji Nusantara Pilihan dengan Traceability Jelas</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       PRODUCTS / SINGLE ORIGIN BEANS CATALOG (9 BEANS)
+       ========================================================================= -->
+  <section class="section" id="beans">
+    <div class="container">
+      <div class="section-head">
+        <span class="tag-badge">Curated Coffee Beans</span>
+        <h2>Koleksi Biji Kopi Nusantara</h2>
+        <p>
+          Setiap daerah di Indonesia memiliki elevasi tanah vulkanis dan mikroklimat unik yang membentuk spektrum rasa tak tertandingi. Dapatkan dalam kemasan segar 200g, 500g, hingga 1kg.
+        </p>
+      </div>
+
+      <div class="product-filter-bar">
+        <button type="button" class="filter-btn active" data-filter="all">Semua Kopi</button>
+        <button type="button" class="filter-btn" data-filter="arabica">Arabica Single Origin</button>
+        <button type="button" class="filter-btn" data-filter="specialty">Specialty Micro-Lot</button>
+        <button type="button" class="filter-btn" data-filter="vietnam">Vietnam Roast Heritage</button>
+      </div>
+
+      <!-- Container filled dynamically via app.js -->
+      <div class="products-grid" id="productsContainer"></div>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       SPECIALTY BREW SPOTLIGHT (ARABICA NATURAL, VIETNAM ROAST, V60)
+       ========================================================================= -->
+  <section class="section section-tint" id="brew">
+    <div class="container">
+      <div class="section-head">
+        <span class="tag-badge">Brewing Heritage &amp; Science</span>
+        <h2>Tiga Karakter Seduh Unggulan</h2>
+        <p>
+          Eksplorasi mendalam tim roaster &amp; barista Saman dalam mengunci karakter senyawa rasa terbaik pada setiap proses.
+        </p>
+      </div>
+
+      <div class="spotlight-grid">
+        <!-- Spotlight 1: Arabica Natural Process -->
+        <div class="spotlight-card">
+          <img src="/samanko/8ebe27_59f990dd688640759b6b8251eebae3be.jpg" alt="Arabica Coffee Natural Process" class="spotlight-img" />
+          <div class="spotlight-body">
+            <div>
+              <span class="tag-badge">Sweet &amp; Fruity</span>
+              <h3>Arabica Coffee (Natural Process)</h3>
+              <p>
+                Kopi Arabika dikenal sebagai kopi rendah kafein dengan spektrum aroma luas. Proses Natural merupakan salah satu metode primadona kami: memperpanjang fase fermentasi dalam biji kopi di bawah hangatnya sinar mentari langsung, menciptakan rasa manis madu alami dan rasa buah-buahan yang lebih intens dan berlapis.
+              </p>
+            </div>
+            <div class="cupping-specs">
+              <div><strong>Karakteristik:</strong> Low Caffeine &bull; High Sweetness</div>
+              <div><strong>Profil Seduh:</strong> V60, Kalita Wave, Japanese Iced</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Spotlight 2: Vietnam Roast Robusta -->
+        <div class="spotlight-card">
+          <img src="/samanko/8ebe27_59f30eec4a3e4386afa6635659fa1ab0.jpg" alt="Vietnam Roast Robusta Coffee" class="spotlight-img" />
+          <div class="spotlight-body">
+            <div>
+              <span class="tag-badge">Heritage Since 1857</span>
+              <h3>Vietnam Roast Robusta Coffee</h3>
+              <p>
+                Kopi kali pertama diperkenalkan di Vietnam oleh bangsa Prancis pada tahun 1857. Saman Roasters memiliki biji kopi robusta pilihan yang disangrai dengan metode otentik Vietnam: campuran butter berkualitas tinggi saat sangrai menghasilkan rasa dan aroma gurih unik dibanding Italian Coffee, disajikan istimewa via metode Vietnam Drip.
+              </p>
+            </div>
+            <div class="cupping-specs">
+              <div><strong>Karakteristik:</strong> Rich Butter Aroma &bull; Bold Body</div>
+              <div><strong>Profil Seduh:</strong> Traditional Vietnam Drip + Condensed Milk</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Spotlight 3: V60 Pour Over Jambi Kerinci -->
+        <div class="spotlight-card">
+          <img src="/samanko/8ebe27_4987bd03d53641e591211f08fc1d6b62.jpg" alt="V60 Pour Over Cafec Abaca Coffee" class="spotlight-img" />
+          <div class="spotlight-body">
+            <div>
+              <span class="tag-badge">Specialty Highlight</span>
+              <h3>V60 Pour Over &bull; Jambi Kerinci</h3>
+              <p>
+                Kami mendedikasikan proses seduh manual V60 menggunakan <em>Cafec Abaca Coffee Filter</em> kertas serat pisang abaca ramah lingkungan dengan aliran ekstraksi sangat bersih tanpa ampas. Diseduh dari biji Jambi Kerinci Natural Process medium roast.
+              </p>
+            </div>
+            <div class="cupping-specs">
+              <div><strong>Region:</strong> Jambi (1,500 - 1,700 mdpl)</div>
+              <div><strong>Cupping Notes:</strong> Tropical Fruity, Honey, Brown Sugar, Red Apple, Light Body</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       ROASTERY CRAFTSMANSHIP (3-PHASE PHILOSOPHY)
+       ========================================================================= -->
+  <section class="section" id="roastery">
+    <div class="container">
+      <div class="section-head">
+        <span class="tag-badge">Roasting Mastery</span>
+        <h2>Filosofi Sangrai 3-Fase</h2>
+        <p>
+          Pada dasarnya roasting kopi adalah memasak kopi yang diproses dalam tiga fase presisi untuk membuka potensi rasa terdalam setiap biji.
+        </p>
+      </div>
+
+      <div class="roastery-timeline">
+        <div class="timeline-step">
+          <div class="step-num">01</div>
+          <h3>Fase 1: Drying Phase</h3>
+          <p>
+            Mengeluarkan kadar air (moisture content) dalam biji kopi merupakan fase awal yang krusial. Pada suhu 150&deg;C - 165&deg;C, warna hijau perlahan bertransisi ke kuning keemasan, mempersiapkan struktur selulosa biji untuk transfer panas yang merata.
+          </p>
+        </div>
+
+        <div class="timeline-step">
+          <div class="step-num">02</div>
+          <h3>Fase 2: Yellowing &amp; Maillard</h3>
+          <p>
+            Mengurangi berat kopi dan memicu reaksi Maillard (pengikatan gula dan asam amino). Fase kedua ini mematangkan aroma karamel, rempah, dan aroma kacang gurih yang menjadi identitas dasar cita rasa kopi.
+          </p>
+        </div>
+
+        <div class="timeline-step">
+          <div class="step-num">03</div>
+          <h3>Fase 3: Development Phase</h3>
+          <p>
+            Fase terakhir pasca <em>First Crack</em> yang sering disebut development. Menentukan keseimbangan antara keasaman buah (acidity), ketebalan rasa di lidah (body), dan manisnya karamelisasi tanpa rasa gosong.
+          </p>
+        </div>
+      </div>
+
+      <div class="roastery-gallery">
+        <div class="gallery-item">
+          <img src="/samanko/8ebe27_933ac212fbf34778b6c5d8c12a4cda65.jpg" alt="Artisan Coffee Roasting Machine Drum" />
+          <div class="gallery-caption">Precision Drum Roaster &bull; Small-Batch Custom Control</div>
+        </div>
+        <div class="gallery-item">
+          <img src="/samanko/8ebe27_14f2cd5a8a7f46e19ca4477f6cfb5134.jpg" alt="Coffee Cupping and Evaluation Table" />
+          <div class="gallery-caption">SCA Protocol Cupping Table &bull; Quality Assurance</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       WHOLESALE & UMKM INCUBATOR SECTION
+       ========================================================================= -->
+  <section class="section section-tint" id="wholesale">
+    <div class="container">
+      <div class="wholesale-banner">
+        <div>
+          <span class="tag-badge">B2B &amp; Cafe Partnership</span>
+          <h2>Wadah Inkubasi Kopi UMKM &amp; Bisnis Kafe</h2>
+          <p>
+            Tidak hanya sekadar kafe retail, Saman Roasters memiliki fasilitas produksi sangrai kopi dan dapur pastry mandiri untuk menjadi mitra strategis pengusaha kopi pemula maupun kedai kopi yang ingin berkembang.
+          </p>
+          <ul class="wholesale-benefits">
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              Pasokan Biji Kopi Sangrai Segar (House Blend Espresso &amp; Single Origin)
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              Distribusi Resmi Davinci Gourmet Syrups &amp; Bahan Baku Minuman
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              Fresh Artisan Pastries &amp; Bakery Supply Harian
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              Konsultasi Menu, Kalibrasi Mesin Espresso, &amp; Pelatihan Barista
+            </li>
+          </ul>
+
+          <a href="https://wa.me/628117752933?text=Halo%20Saman%20Roasters%2C%20saya%20tertarik%20kerjasama%20Wholesale%20%2F%20Suplai%20Biji%20Kopi%20untuk%20usaha%20saya." target="_blank" class="btn btn-primary">
+            Hubungi Kemitraan Wholesale
+          </a>
+        </div>
+
+        <div>
+          <img src="/samanko/a3c153_a0c884d86e064a5ba8e7cc5f990e2f8e.jpg" alt="Wholesale Coffee Beans &amp; Pastry Partner" style="width: 100%; height: 340px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border-medium);" />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       LOCATION, OPENING HOURS & RSVP TABLE
+       ========================================================================= -->
+  <section class="section" id="contact">
+    <div class="container">
+      <div class="contact-grid">
+        <!-- Left: Operating Information -->
+        <div>
+          <span class="tag-badge">Visit &amp; Connect</span>
+          <h2 style="font-size: 2.3rem; margin: 0.8rem 0 1.2rem 0;">Informasi Toko &amp; Jam Buka</h2>
+          <p style="color: var(--text-muted); line-height: 1.7; margin-bottom: 2rem;">
+            Nikmati suasana hangat kedai kami di Tanjung Pinang, Kepulauan Riau, atau hubungi kami untuk pemesanan biji kopi ke seluruh Indonesia.
+          </p>
+
+          <div class="info-card">
+            <h4>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              Jam Operasional (WIB)
+            </h4>
+            <div class="info-row">
+              <span>Office &amp; Roastery:</span>
+              <span>08:00 AM &ndash; 18:00 PM</span>
+            </div>
+            <div class="info-row">
+              <span>Store &amp; Coffee Shop:</span>
+              <span>08:00 AM &ndash; 23:00 PM</span>
+            </div>
+          </div>
+
+          <div class="info-card">
+            <h4>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              Alamat &amp; Kontak Resmi
+            </h4>
+            <div class="info-row">
+              <span>Lokasi:</span>
+              <span>Tanjung Pinang, Kepulauan Riau, Indonesia</span>
+            </div>
+            <div class="info-row">
+              <span>WhatsApp (Order &amp; RSVP):</span>
+              <span>+62 811-7752-933</span>
+            </div>
+            <div class="info-row">
+              <span>Email Resmi:</span>
+              <span>saman.roasters@gmail.com</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: RSVP Form Card -->
+        <div id="rsvp">
+          <div class="rsvp-form-card">
+            <span class="tag-badge">Table Reservation</span>
+            <h3 class="font-serif">Reservasi Meja &amp; RSVP</h3>
+            <p>Rencanakan pertemuan bisnis, gathering komunitas, atau santai sore Anda di Saman Roasters.</p>
+
+            <form id="rsvpForm">
+              <div class="form-group">
+                <label for="rsvpName">Nama Lengkap:</label>
+                <input type="text" id="rsvpName" class="form-input" placeholder="Misal: Bapak Rian" required />
+              </div>
+
+              <div class="form-group">
+                <label for="rsvpPhone">Nomor WhatsApp:</label>
+                <input type="tel" id="rsvpPhone" class="form-input" placeholder="08xxxxxxxxxx" required />
+              </div>
+
+              <div class="form-row-2col">
+                <!-- Custom Date & Time Picker -->
+                <div class="form-group">
+                  <label>Waktu Kunjungan (Date &amp; Time):</label>
+                  <div class="custom-datepicker-wrapper" id="rsvpDatePickerWrapper">
+                    <input type="hidden" id="rsvpDateVal" name="rsvpDate" value="" />
+                    <div class="custom-datepicker-trigger" id="rsvpDateTrigger">
+                      <div class="custom-datepicker-value" id="rsvpDateDisplay">
+                        <svg class="custom-datepicker-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                        <span>Pilih Tanggal &amp; Waktu</span>
+                      </div>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                    </div>
+
+                    <!-- Calendar Dialog -->
+                    <div class="custom-datepicker-dialog" id="rsvpDateDialog">
+                      <div class="calendar-header">
+                        <button type="button" class="calendar-nav-btn" id="calPrevMonth" aria-label="Bulan Sebelumnya">&lt;</button>
+                        <div class="calendar-month-year" id="calMonthYear">Oktober 2026</div>
+                        <button type="button" class="calendar-nav-btn" id="calNextMonth" aria-label="Bulan Berikutnya">&gt;</button>
+                      </div>
+
+                      <div class="calendar-weekdays">
+                        <span>Min</span><span>Sen</span><span>Sel</span><span>Rab</span><span>Kam</span><span>Jum</span><span>Sab</span>
+                      </div>
+
+                      <div class="calendar-days-grid" id="calDaysGrid"></div>
+
+                      <div class="time-slot-section">
+                        <div class="time-slot-title">Pilih Jam / Slot Waktu:</div>
+                        <div class="time-slot-grid" id="calTimeSlots">
+                          <button type="button" class="time-slot-pill" data-time="09:00">09:00</button>
+                          <button type="button" class="time-slot-pill" data-time="11:00">11:00</button>
+                          <button type="button" class="time-slot-pill" data-time="13:30">13:30</button>
+                          <button type="button" class="time-slot-pill selected" data-time="15:00">15:00</button>
+                          <button type="button" class="time-slot-pill" data-time="16:30">16:30</button>
+                          <button type="button" class="time-slot-pill" data-time="18:30">18:30</button>
+                          <button type="button" class="time-slot-pill" data-time="19:30">19:30</button>
+                          <button type="button" class="time-slot-pill" data-time="20:30">20:30</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Custom Select for Guests -->
+                <div class="form-group">
+                  <label>Jumlah Tamu / Orang:</label>
+                  <div class="custom-select-wrapper" id="rsvpGuestsWrapper">
+                    <input type="hidden" id="rsvpGuestsVal" name="rsvpGuests" value="1 - 2 Orang (Meja Intimate)" />
+                    <div class="custom-select-trigger" id="rsvpGuestsTrigger">
+                      <div class="custom-select-value">
+                        <svg class="custom-select-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        <span id="rsvpGuestsDisplay">1 - 2 Orang (Meja Intimate)</span>
+                      </div>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="custom-select-icon"><polyline points="6 9 12 15 18 9"/></svg>
+                    </div>
+
+                    <div class="custom-select-dropdown" id="rsvpGuestsDropdown">
+                      <div class="custom-select-option selected" data-value="1 - 2 Orang (Meja Intimate)">
+                        <strong>1 - 2 Orang</strong>
+                        <span class="custom-select-option-sub">Meja Barista / Sudut Santai Intimate</span>
+                      </div>
+                      <div class="custom-select-option" data-value="3 - 4 Orang (Meja Reguler)">
+                        <strong>3 - 4 Orang</strong>
+                        <span class="custom-select-option-sub">Meja Reguler Kafe &bull; Indoor/Outdoor</span>
+                      </div>
+                      <div class="custom-select-option" data-value="5 - 8 Orang (Family / Meeting)">
+                        <strong>5 - 8 Orang</strong>
+                        <span class="custom-select-option-sub">Meja Panjang Gathering / Rapat Santai</span>
+                      </div>
+                      <div class="custom-select-option" data-value="8+ Orang (Komunitas / Workshop)">
+                        <strong>Lebih dari 8 Orang</strong>
+                        <span class="custom-select-option-sub">Area Komunitas / Reservasi Khusus</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="rsvpNotes">Catatan Khusus / Permintaan:</label>
+                <textarea id="rsvpNotes" class="form-textarea" rows="2" placeholder="Misal: Meja dekat colokan / smoking area"></textarea>
+              </div>
+
+              <button type="submit" class="btn btn-primary" style="width: 100%;">
+                Kirim Reservasi ke WhatsApp
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       FOOTER
+       ========================================================================= -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-col">
+          <div class="brand-text" style="margin-bottom: 0.8rem;">
+            <h1 style="font-size: 1.25rem; color: #ffffff;">SAMAN ROASTERS</h1>
+            <span style="font-family: var(--font-mono); color: var(--accent-crema); font-size: 0.7rem; text-transform: uppercase;">Specialty Roastery &bull; Tanjung Pinang</span>
+          </div>
+          <p style="font-size: 0.82rem; line-height: 1.6; color: #ad9e92;">
+            Menjunjung tinggi kekayaan Kopi Nusantara dan metode sangrai presisi demi secangkir kopi berkarakter bagi penikmat kopi sejati.
+          </p>
+        </div>
+
+        <div class="footer-col">
+          <h5>Menu Kopi</h5>
+          <ul>
+            <li><a href="#beans">Aceh Gayo</a></li>
+            <li><a href="#beans">Papua Wamena</a></li>
+            <li><a href="#beans">Padang Solok</a></li>
+            <li><a href="#beans">Jambi Kerinci V60</a></li>
+            <li><a href="#beans">Vietnam Roast Robusta</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h5>Eksplorasi</h5>
+          <ul>
+            <li><a href="#story">Story of Saman</a></li>
+            <li><a href="#roastery">3-Phase Roasting</a></li>
+            <li><a href="#brew">Metode Seduh V60</a></li>
+            <li><a href="#wholesale">Wholesale &amp; Kemitraan</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h5>Kontak &amp; Order</h5>
+          <ul>
+            <li>+62 811-7752-933</li>
+            <li>saman.roasters@gmail.com</li>
+            <li>Tanjung Pinang, Kepulauan Riau</li>
+            <li>Office: 08:00 - 18:00 WIB</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <p>&copy; 2026 SAMAN Specialty Coffee Roasters. All rights reserved. Rebuilt with pure Vanilla HTML &amp; CSS.</p>
+        <p style="color: var(--accent-crema); font-family: var(--font-mono);">Crafted with Pure HTML5 &amp; Modern CSS3 &bull; No Frameworks</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- =========================================================================
+       QUICK PRODUCT CUPPING & ORDER MODAL
+       ========================================================================= -->
+  <div class="modal-overlay" id="productModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h4 class="font-serif" style="color: var(--accent-espresso); font-size: 1.15rem;">Spesifikasi Biji &amp; Pesanan</h4>
+        <button type="button" class="modal-close-btn" id="closeModalBtn">&times;</button>
+      </div>
+      <div class="modal-body" id="modalProductDetails">
+        <!-- Rendered dynamically via app.js -->
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       FLOATING FULLSCREEN BUTTON
+       ========================================================================= -->
+  <button type="button" class="floating-fullscreen-btn" id="toggleFullscreenBtn" title="Toggle Fullscreen Mode">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+    </svg>
+    <span>View Fullscreen</span>
+  </button>
+
+  <script src="app.js"></script>
+</body>
+</html>

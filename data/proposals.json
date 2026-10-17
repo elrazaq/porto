@@ -1,0 +1,14 @@
+[
+  {
+    "id": "prop_1792165545097_9764b1f5",
+    "name": "Budi Santoso (PT Inovasi Logistik)",
+    "email": "budi.santoso@example.com",
+    "phone": "081234567890",
+    "title": "Aplikasi Android Logistik & Tracking Realtime",
+    "category": "Native Android (Kotlin)",
+    "budget": "Rp 15.000.000 – Rp 35.000.000",
+    "description": "Kebutuhan pembuatan aplikasi mobile Android untuk tracking armada truk dan driver dengan live GPS, offline caching Room, dan integrasi REST API backend.",
+    "createdAt": "2026-10-16T15:45:45.097Z",
+    "status": "unread"
+  }
+]

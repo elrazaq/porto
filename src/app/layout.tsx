@@ -23,9 +23,15 @@ const amiri = Amiri({
 });
 
 export const metadata: Metadata = {
-  title: "Full Stack & Native Android Developer | Portfolio",
+  title: "Abdul Razak - Portofolio",
   description:
-    "Interactive modern portfolio with Bento Grid, showcasing Full Stack Web and Native Android (Kotlin) development.",
+    "Interactive modern portfolio of Abdul Razak, S.T. showcasing Full Stack Web, Native Android (Kotlin), and Enterprise IT Systems.",
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+    apple: "/icon.svg",
+  },
 };
 
 export default function RootLayout({

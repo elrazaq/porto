@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { ethers } from "ethers";
 import {
   ShieldCheck,
   Wallet,
@@ -24,22 +25,19 @@ import {
   Terminal,
   RefreshCw,
   X,
-  Cpu,
-  RotateCcw,
 } from "lucide-react";
 import {
-  INITIAL_CANDIDATES,
-  DEMO_WALLET_PROFILES,
-  INITIAL_AUDIT_EVENTS,
   MEDVOTE_CONTRACT_ADDRESS,
+  MEDVOTE_DEPLOY_BLOCK,
   MEDVOTE_NETWORK_NAME,
   MEDVOTE_CHAIN_ID,
   MEDVOTE_RPC_URL,
+  MEDVOTE_EXPLORER_BASE,
   MEDVOTE_EXPLORER_URL,
-  MEDVOTE_ABI_SUMMARY,
-  computeSha256Hex,
+  MEDVOTE_ABI,
+  ONCHAIN_WALLET_CREDENTIALS,
+  CANDIDATE_PROGRAMS_MAP,
   MedVoteCandidate,
-  DoctorWalletProfile,
   OnChainAuditEvent,
 } from "@/data/medvoteContract";
 
@@ -49,232 +47,196 @@ interface MedVoteAppProps {
 
 type ActiveTab = "voting" | "leaderboard" | "admin" | "contract";
 
-const STORAGE_KEY = "medvote_persistent_ledger_v2";
+interface VoterOnChainStatus {
+  isWhitelisted: boolean;
+  hasVoted: boolean;
+  votedCandidateId: number | null;
+  votedTimestamp: number;
+  doctorName: string;
+  department: string;
+}
 
 export function MedVoteApp({ deviceMode = "desktop" }: MedVoteAppProps) {
   const [activeTab, setActiveTab] = useState<ActiveTab>("voting");
-  const [candidates, setCandidates] = useState<MedVoteCandidate[]>(INITIAL_CANDIDATES);
-  const [walletProfiles, setWalletProfiles] =
-    useState<DoctorWalletProfile[]>(DEMO_WALLET_PROFILES);
-  const [selectedProfileIdx, setSelectedProfileIdx] = useState<number>(0);
-  const [isWalletConnected, setIsWalletConnected] = useState<boolean>(true);
+  const [selectedCredIdx, setSelectedCredIdx] = useState<number>(0);
+
+  // Live On-Chain State read directly from Smart Contract
+  const [candidates, setCandidates] = useState<MedVoteCandidate[]>([]);
+  const [voterStatus, setVoterStatus] = useState<VoterOnChainStatus>({
+    isWhitelisted: true,
+    hasVoted: false,
+    votedCandidateId: null,
+    votedTimestamp: 0,
+    doctorName: ONCHAIN_WALLET_CREDENTIALS[0].name,
+    department: ONCHAIN_WALLET_CREDENTIALS[0].department,
+  });
   const [isElectionActive, setIsElectionActive] = useState<boolean>(true);
-  const [auditEvents, setAuditEvents] = useState<OnChainAuditEvent[]>(INITIAL_AUDIT_EVENTS);
-  const [isHydrated, setIsHydrated] = useState<boolean>(false);
+  const [totalWhitelistedOnChain, setTotalWhitelistedOnChain] = useState<number>(7);
+  const [auditEvents, setAuditEvents] = useState<OnChainAuditEvent[]>([]);
+  const [currentBlock, setCurrentBlock] = useState<number>(MEDVOTE_DEPLOY_BLOCK);
+  const [isLoadingChain, setIsLoadingChain] = useState<boolean>(true);
 
-  // Real Live Polygon Amoy RPC State
-  const [currentBlock, setCurrentBlock] = useState<number>(14892345);
-  const [rpcLatencyMs, setRpcLatencyMs] = useState<number | null>(null);
-  const [rpcConnected, setRpcConnected] = useState<boolean>(false);
-  const [hasMetaMask, setHasMetaMask] = useState<boolean>(false);
-
-  // Cryptographic Chain Verification Modal / State
-  const [isVerifyModalOpen, setIsVerifyModalOpen] = useState<boolean>(false);
-  const [isVerifyingChain, setIsVerifyingChain] = useState<boolean>(false);
-  const [chainVerifiedResult, setChainVerifiedResult] = useState<{
-    valid: boolean;
-    blocksChecked: number;
-    liveBlock: number;
-    latency: number;
-  } | null>(null);
-
-  // Transaction Mining Modal State (Strictly inside WorkView container)
+  // Transaction Execution Modal State (Strictly scoped inside WorkView)
   const [txStage, setTxStage] = useState<
     "idle" | "signing" | "broadcasting" | "mining" | "confirmed"
   >("idle");
   const [pendingCandidate, setPendingCandidate] = useState<MedVoteCandidate | null>(null);
   const [latestTxHash, setLatestTxHash] = useState<string>("");
-  const [latestSignature, setLatestSignature] = useState<string>("");
+  const [latestBlockNum, setLatestBlockNum] = useState<number>(0);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [copiedText, setCopiedText] = useState<string | null>(null);
 
-  // Admin Form State
-  const [batchWhitelistInput, setBatchWhitelistInput] = useState<string>(
-    "0x90F79bf6EB2c4f870365E785982E1f101E93b906\n0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65"
+  // Admin Form State (Only accessible by Panitia Pemilihan)
+  const [regWalletAddr, setRegWalletAddr] = useState<string>(
+    ONCHAIN_WALLET_CREDENTIALS[3].address
+  );
+  const [regDocName, setRegDocName] = useState<string>(
+    ONCHAIN_WALLET_CREDENTIALS[3].name
+  );
+  const [regDocDept, setRegDocDept] = useState<string>(
+    ONCHAIN_WALLET_CREDENTIALS[3].department
   );
   const [newCandName, setNewCandName] = useState<string>("");
   const [newCandSpec, setNewCandSpec] = useState<string>("");
   const [newCandDept, setNewCandDept] = useState<string>("");
+  const [newCandNip, setNewCandNip] = useState<string>("");
   const [newCandVision, setNewCandVision] = useState<string>("");
-  const [adminSuccessMsg, setAdminSuccessMsg] = useState<string | null>(null);
+  const [isAdminSubmitting, setIsAdminSubmitting] = useState<boolean>(false);
+  const [adminSuccessMsg, setAdminSuccessMsg] = useState<{
+    message: string;
+    txHash: string;
+    blockNumber: number;
+  } | null>(null);
 
-  // Explorer Inspector Modal State
-  const [inspectedEvent, setInspectedEvent] = useState<OnChainAuditEvent | null>(null);
+  const activeCredential = ONCHAIN_WALLET_CREDENTIALS[selectedCredIdx];
+  const isAdminRole = activeCredential.role === "admin";
 
-  // 1. Ping Real Polygon Amoy Public RPC for Live Block Number
-  const fetchLivePolygonBlock = useCallback(async () => {
-    const start = performance.now();
+  // Create read-only provider to live EVM Blockchain
+  const getProvider = useCallback(() => {
+    return new ethers.JsonRpcProvider(MEDVOTE_RPC_URL, MEDVOTE_CHAIN_ID, {
+      staticNetwork: true,
+      batchMaxCount: 1,
+    });
+  }, []);
+
+  // Synchronize all data directly from the deployed Smart Contract on the blockchain
+  const syncOnChainData = useCallback(async () => {
     try {
-      const res = await fetch(MEDVOTE_RPC_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          method: "eth_blockNumber",
-          params: [],
-          id: 1,
-        }),
-      });
-      const data = await res.json();
-      if (data && data.result) {
-        const blockNum = parseInt(data.result, 16);
-        const elapsed = Math.round(performance.now() - start);
-        if (!isNaN(blockNum) && blockNum > 0) {
-          setCurrentBlock(blockNum);
-          setRpcLatencyMs(elapsed);
-          setRpcConnected(true);
-          return { blockNum, elapsed };
-        }
-      }
-    } catch {
-      // Fallback if offline
-    }
-    return { blockNum: currentBlock, elapsed: 42 };
-  }, [currentBlock]);
+      const provider = getProvider();
+      const contract = new ethers.Contract(MEDVOTE_CONTRACT_ADDRESS, MEDVOTE_ABI, provider);
 
-  // 2. Load Persistent Ledger on Mount (LocalStorage + Server /api/medvote)
+      const [rawCandidates, activeFlag, whitelistedCount, blockNum, rawVoter] =
+        await Promise.all([
+          contract.getResults(),
+          contract.isElectionActive(),
+          contract.totalWhitelisted(),
+          provider.getBlockNumber(),
+          contract.getVoterStatus(activeCredential.address),
+        ]);
+
+      const mappedCandidates: MedVoteCandidate[] = rawCandidates.map(
+        (c: {
+          id: bigint;
+          number: string;
+          name: string;
+          specialist: string;
+          department: string;
+          nip: string;
+          experience: string;
+          visionMission: string;
+          avatarUrl: string;
+          voteCount: bigint;
+        }) => {
+          const cid = Number(c.id);
+          return {
+            id: cid,
+            number: c.number,
+            name: c.name,
+            specialist: c.specialist,
+            department: c.department,
+            nip: c.nip,
+            experience: c.experience,
+            visionMission: c.visionMission,
+            programs: CANDIDATE_PROGRAMS_MAP[cid] || [
+              "Transparansi kredensialing dan audit medis berkala berbasis data",
+              "Pengembangan kompetensi berkelanjutan bagi staf medis fungsional",
+            ],
+            avatarUrl: c.avatarUrl,
+            voteCount: Number(c.voteCount),
+          };
+        }
+      );
+
+      setCandidates(mappedCandidates);
+      setIsElectionActive(Boolean(activeFlag));
+      setTotalWhitelistedOnChain(Number(whitelistedCount));
+      setCurrentBlock(Number(blockNum));
+
+      setVoterStatus({
+        isWhitelisted: Boolean(rawVoter[0]),
+        hasVoted: Boolean(rawVoter[1]),
+        votedCandidateId: Boolean(rawVoter[1]) ? Number(rawVoter[2]) : null,
+        votedTimestamp: Number(rawVoter[3]),
+        doctorName: rawVoter[4] || activeCredential.name,
+        department: rawVoter[5] || activeCredential.department,
+      });
+
+      // Fetch real VoteCast events from the blockchain
+      try {
+        const voteFilter = contract.filters.VoteCast();
+        const logs = await contract.queryFilter(voteFilter, MEDVOTE_DEPLOY_BLOCK);
+        const parsedEvents: OnChainAuditEvent[] = logs
+          .map((log) => {
+            const eventLog = log as ethers.EventLog;
+            const voterAddr = String(eventLog.args[0]);
+            const voterName = String(eventLog.args[1]);
+            const candId = Number(eventLog.args[2]);
+            const candName = String(eventLog.args[3]);
+            const ts = Number(eventLog.args[4]);
+            const dateStr =
+              ts > 0
+                ? new Date(ts * 1000).toLocaleString("id-ID", {
+                    day: "2-digit",
+                    month: "short",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                  })
+                : "On-Chain Confirmed";
+
+            return {
+              txHash: eventLog.transactionHash,
+              blockNumber: eventLog.blockNumber,
+              eventName: "VoteCast" as const,
+              voterOrActor: `${voterAddr.slice(0, 6)}...${voterAddr.slice(-4)}`,
+              voterLabel: voterName,
+              candidateId: candId,
+              candidateName: candName,
+              timestamp: dateStr,
+            };
+          })
+          .reverse();
+
+        setAuditEvents(parsedEvents);
+      } catch {
+        // Keep existing events if log range query times out
+      }
+    } catch (err) {
+      console.error("Failed to sync from blockchain:", err);
+    } finally {
+      setIsLoadingChain(false);
+    }
+  }, [activeCredential, getProvider]);
+
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const eth = (window as unknown as { ethereum?: unknown }).ethereum;
-      setHasMetaMask(Boolean(eth));
-    }
-
-    async function loadPersistentState() {
-      // Check localStorage first for instant hydration
-      let loadedFromLocal = false;
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (parsed.candidates && parsed.walletProfiles && parsed.auditEvents) {
-            setCandidates(parsed.candidates);
-            setWalletProfiles(parsed.walletProfiles);
-            setAuditEvents(parsed.auditEvents);
-            if (typeof parsed.isElectionActive === "boolean") {
-              setIsElectionActive(parsed.isElectionActive);
-            }
-            loadedFromLocal = true;
-          }
-        }
-      } catch {
-        // Ignore storage error
-      }
-
-      // Also sync from server API ledger if not loaded from local
-      if (!loadedFromLocal) {
-        try {
-          const res = await fetch("/api/medvote");
-          if (res.ok) {
-            const serverLedger = await res.json();
-            if (serverLedger.candidates && serverLedger.walletProfiles) {
-              setCandidates(serverLedger.candidates);
-              setWalletProfiles(serverLedger.walletProfiles);
-              setAuditEvents(serverLedger.auditEvents);
-              setIsElectionActive(serverLedger.isElectionActive ?? true);
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(serverLedger));
-            }
-          }
-        } catch {
-          // Ignore network error
-        }
-      }
-      setIsHydrated(true);
-    }
-
-    loadPersistentState();
-    fetchLivePolygonBlock();
-  }, [fetchLivePolygonBlock]);
-
-  // Helper to persist any ledger update to BOTH localStorage and /api/medvote
-  const persistLedgerState = useCallback(
-    async (
-      nextCandidates: MedVoteCandidate[],
-      nextProfiles: DoctorWalletProfile[],
-      nextEvents: OnChainAuditEvent[],
-      nextActive: boolean
-    ) => {
-      const payload = {
-        candidates: nextCandidates,
-        walletProfiles: nextProfiles,
-        auditEvents: nextEvents,
-        isElectionActive: nextActive,
-        lastUpdated: new Date().toISOString(),
-      };
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-      } catch {
-        // Ignore quota error
-      }
-      try {
-        await fetch("/api/medvote", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-      } catch {
-        // Ignore network error
-      }
-    },
-    []
-  );
-
-  // Reset Ledger back to initial demo state if user clicks Reset Ledger
-  const handleResetLedger = async () => {
-    setCandidates(INITIAL_CANDIDATES);
-    setWalletProfiles(DEMO_WALLET_PROFILES);
-    setAuditEvents(INITIAL_AUDIT_EVENTS);
-    setIsElectionActive(true);
-    setErrorBanner(null);
-    setAdminSuccessMsg("Ledger berhasil di-reset ke state awal (113 Suara).");
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-      await fetch("/api/medvote", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "reset" }),
-      });
-    } catch {
-      // Ignore
-    }
-  };
-
-  // Run Live Blockchain & Hash-Chain Verification
-  const handleRunVerification = async () => {
-    setIsVerifyModalOpen(true);
-    setIsVerifyingChain(true);
-    const rpcInfo = await fetchLivePolygonBlock();
-
-    setTimeout(() => {
-      // Verify parentHash links across auditEvents
-      let valid = true;
-      for (let i = 0; i < auditEvents.length - 1; i++) {
-        if (auditEvents[i].parentHash !== auditEvents[i + 1].txHash) {
-          valid = false;
-          break;
-        }
-      }
-      setChainVerifiedResult({
-        valid,
-        blocksChecked: auditEvents.length,
-        liveBlock: rpcInfo.blockNum,
-        latency: rpcInfo.elapsed,
-      });
-      setIsVerifyingChain(false);
-    }, 600);
-  };
-
-  const currentWallet = walletProfiles[selectedProfileIdx] || walletProfiles[0];
+    setIsLoadingChain(true);
+    syncOnChainData();
+  }, [syncOnChainData]);
 
   const totalVotes = useMemo(
     () => candidates.reduce((acc, item) => acc + item.voteCount, 0),
     [candidates]
   );
-
-  const totalWhitelistedDoctors = useMemo(() => {
-    const baseWhitelisted = 125;
-    const extraWhitelisted = walletProfiles.filter((w) => w.isWhitelisted).length - 2;
-    return baseWhitelisted + Math.max(0, extraWhitelisted);
-  }, [walletProfiles]);
 
   const sortedLeaderboard = useMemo(
     () => [...candidates].sort((a, b) => b.voteCount - a.voteCount),
@@ -289,101 +251,37 @@ export function MedVoteApp({ deviceMode = "desktop" }: MedVoteAppProps) {
     setTimeout(() => setCopiedText(null), 2000);
   };
 
-  const generateRandomHex = (len: number) => {
-    const chars = "0123456789abcdef";
-    let out = "0x";
-    for (let i = 0; i < len; i++) {
-      out += chars[Math.floor(Math.random() * chars.length)];
-    }
-    return out;
-  };
-
-  // Connect real MetaMask if installed
-  const handleConnectBrowserWallet = async () => {
-    setErrorBanner(null);
-    if (
-      typeof window !== "undefined" &&
-      (
-        window as unknown as {
-          ethereum?: { request: (args: { method: string; params?: unknown[] }) => Promise<string[]> };
-        }
-      ).ethereum
-    ) {
-      try {
-        const eth = (
-          window as unknown as {
-            ethereum: { request: (args: { method: string; params?: unknown[] }) => Promise<string[]> };
-          }
-        ).ethereum;
-        const accounts = await eth.request({ method: "eth_requestAccounts" });
-        if (accounts && accounts[0]) {
-          const addr = accounts[0];
-          const existingIdx = walletProfiles.findIndex(
-            (w) => w.address.toLowerCase() === addr.toLowerCase()
-          );
-          if (existingIdx >= 0) {
-            setSelectedProfileIdx(existingIdx);
-          } else {
-            const customProfile: DoctorWalletProfile = {
-              address: addr,
-              name: "dr. Abdul Razak, S.T. (MetaMask Connected)",
-              department: "KSM Terverifikasi Web3 Browser Wallet",
-              role: "voter",
-              isWhitelisted: true,
-              hasVoted: false,
-              votedCandidateId: null,
-            };
-            const nextProfiles = [...walletProfiles, customProfile];
-            setWalletProfiles(nextProfiles);
-            setSelectedProfileIdx(nextProfiles.length - 1);
-            await persistLedgerState(
-              candidates,
-              nextProfiles,
-              auditEvents,
-              isElectionActive
-            );
-          }
-          setIsWalletConnected(true);
-          return;
-        }
-      } catch {
-        // Fallback if user rejected MetaMask prompt
-      }
-    }
-    setIsWalletConnected(true);
-  };
-
-  // Cast Vote Handler with Real SHA-256 Hash Chain + Optional MetaMask Signature + Persistent Save
+  // REAL ON-CHAIN VOTE TRANSACTION
   const handleCastVote = async (candidate: MedVoteCandidate) => {
     setErrorBanner(null);
 
-    if (!isWalletConnected) {
+    if (isAdminRole) {
       setErrorBanner(
-        "WalletNotConnected: Harap hubungkan wallet dokter Anda terlebih dahulu pada pojok kanan atas."
+        "Smart Contract Revert — AdminCannotVote(): Komisi Pemilihan Independen (Panitia) bertugas sebagai penyelenggara netral dan tidak memiliki hak suara."
       );
       return;
     }
 
     if (!isElectionActive) {
       setErrorBanner(
-        "Smart Contract Revert — ElectionNotActive(): Periode pemungutan suara sedang ditutup oleh Panitia Pemilihan."
+        "Smart Contract Revert — ElectionNotActive(): Periode pemungutan suara sedang ditutup oleh Komisi Pemilihan."
       );
       return;
     }
 
-    if (!currentWallet.isWhitelisted) {
+    if (!voterStatus.isWhitelisted) {
       setErrorBanner(
-        `Smart Contract Revert — VoterNotWhitelisted(): Alamat wallet ${currentWallet.address.slice(
+        `Smart Contract Revert — VoterNotWhitelisted(): Kredensial wallet ${activeCredential.address.slice(
           0,
-          8
-        )}... belum terdaftar pada Daftar Pemilih Tetap (DPT) Komite Medik. Buka tab "Panel Admin Panitia" untuk melakukan Whitelist.`
+          10
+        )}... (${activeCredential.name}) belum terdaftar pada Daftar Pemilih Tetap (DPT) Komite Medik.`
       );
       return;
     }
 
-    if (currentWallet.hasVoted) {
+    if (voterStatus.hasVoted) {
       setErrorBanner(
-        `Smart Contract Revert — VoterAlreadyVoted(): Identitas wallet ini sudah menggunakan hak suara (1 Dokter = 1 Suara Mutlak).`
+        "Smart Contract Revert — VoterAlreadyVoted(): Kredensial dokter ini telah menggunakan hak suaranya di Smart Contract (1 Dokter = 1 Hak Suara)."
       );
       return;
     }
@@ -391,261 +289,189 @@ export function MedVoteApp({ deviceMode = "desktop" }: MedVoteAppProps) {
     setPendingCandidate(candidate);
     setTxStage("signing");
 
-    // Step 1: Request real personal_sign if MetaMask matches currentWallet, or compute deterministic ECDSA-like signature
-    let signatureHex = "";
-    const timestampIso = new Date().toISOString();
-    const voteMessage = `MedVote RSUD Official Ballot\nContract: ${MEDVOTE_CONTRACT_ADDRESS}\nChainId: ${MEDVOTE_CHAIN_ID}\nVoter: ${currentWallet.address}\nCandidateId: ${candidate.id} (${candidate.name})\nTimestamp: ${timestampIso}`;
+    try {
+      const provider = getProvider();
+      const signer = new ethers.Wallet(activeCredential.privateKey, provider);
+      const contract = new ethers.Contract(MEDVOTE_CONTRACT_ADDRESS, MEDVOTE_ABI, signer);
 
-    if (
-      typeof window !== "undefined" &&
-      (
-        window as unknown as {
-          ethereum?: { request: (args: { method: string; params?: unknown[] }) => Promise<string> };
-        }
-      ).ethereum &&
-      currentWallet.name.includes("MetaMask")
-    ) {
-      try {
-        const eth = (
-          window as unknown as {
-            ethereum: { request: (args: { method: string; params?: unknown[] }) => Promise<string> };
-          }
-        ).ethereum;
-        signatureHex = await eth.request({
-          method: "personal_sign",
-          params: [voteMessage, currentWallet.address],
-        });
-      } catch {
-        signatureHex = await computeSha256Hex("SIG:" + voteMessage);
-      }
-    } else {
-      signatureHex = await computeSha256Hex("ECDSA_SIG:" + voteMessage);
-    }
-
-    setLatestSignature(signatureHex);
-
-    // Step 2: Broadcast to Polygon Amoy RPC to get live block number
-    setTimeout(async () => {
       setTxStage("broadcasting");
-      const rpcInfo = await fetchLivePolygonBlock();
+      const tx = await contract.vote(candidate.id, {
+        type: 2,
+        maxFeePerGas: 0,
+        maxPriorityFeePerGas: 0,
+        gasLimit: 350000,
+      });
 
-      // Step 3: Mining & SHA-256 Block Chaining
-      setTimeout(async () => {
-        setTxStage("mining");
+      setLatestTxHash(tx.hash);
+      setTxStage("mining");
 
-        const parentHash =
-          auditEvents.length > 0
-            ? auditEvents[0].txHash
-            : "0x0000000000000000000000000000000000000000000000000000000000000000";
+      const receipt = await tx.wait();
+      setLatestBlockNum(Number(receipt.blockNumber));
 
-        const newBlock = rpcInfo.blockNum + 1;
-        const rawBlockPayload = `${parentHash}|${newBlock}|VoteCast|${currentWallet.address}|${candidate.id}|${timestampIso}|${signatureHex}`;
-        const realSha256TxHash = await computeSha256Hex(rawBlockPayload);
-
-        setTimeout(async () => {
-          setCurrentBlock(newBlock);
-          setLatestTxHash(realSha256TxHash);
-
-          const nextCandidates = candidates.map((c) =>
-            c.id === candidate.id ? { ...c, voteCount: c.voteCount + 1 } : c
-          );
-
-          const nextProfiles = walletProfiles.map((w, idx) =>
-            idx === selectedProfileIdx
-              ? {
-                  ...w,
-                  hasVoted: true,
-                  votedCandidateId: candidate.id,
-                  txHash: realSha256TxHash,
-                }
-              : w
-          );
-
-          const newEvent: OnChainAuditEvent = {
-            txHash: realSha256TxHash,
-            parentHash,
-            blockNumber: newBlock,
-            eventName: "VoteCast",
-            voterOrActor: `${currentWallet.address.slice(0, 6)}...${currentWallet.address.slice(
-              -4
-            )}`,
-            voterLabel: `${currentWallet.name} (Terverifikasi)`,
-            candidateId: candidate.id,
-            candidateName: candidate.name,
-            timestamp: new Date().toLocaleTimeString("id-ID", {
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit",
-            }),
-            gasUsed: "46,204",
-            signature: signatureHex,
-          };
-
-          const nextEvents = [newEvent, ...auditEvents];
-
-          setCandidates(nextCandidates);
-          setWalletProfiles(nextProfiles);
-          setAuditEvents(nextEvents);
-
-          await persistLedgerState(
-            nextCandidates,
-            nextProfiles,
-            nextEvents,
-            isElectionActive
-          );
-
-          setTxStage("confirmed");
-        }, 900);
-      }, 800);
-    }, 700);
+      await syncOnChainData();
+      setTxStage("confirmed");
+    } catch (err: unknown) {
+      setTxStage("idle");
+      const message = err instanceof Error ? err.message : String(err);
+      setErrorBanner(`Transaksi On-Chain Gagal: ${message.slice(0, 160)}`);
+    }
   };
 
-  // Admin: Batch Whitelist Voters
-  const handleBatchWhitelist = async (e: React.FormEvent) => {
+  // REAL ON-CHAIN ADMIN REGISTER VOTER (WHITELIST)
+  const handleRegisterVoterOnChain = async (e: React.FormEvent) => {
     e.preventDefault();
-    setAdminSuccessMsg(null);
     setErrorBanner(null);
+    setAdminSuccessMsg(null);
 
-    const lines = batchWhitelistInput
-      .split(/[\n,;]+/)
-      .map((s) => s.trim())
-      .filter((s) => s.startsWith("0x") && s.length >= 10);
-
-    if (lines.length === 0) {
-      setErrorBanner("EmptyBatchList(): Masukkan minimal 1 alamat wallet EVM yang valid (0x...).");
+    if (!isAdminRole) {
+      setErrorBanner(
+        "Smart Contract Revert — UnauthorizedAdmin(): Hanya Wallet Otoritas Komisi Pemilihan yang diizinkan menambah DPT."
+      );
       return;
     }
 
-    const parentHash =
-      auditEvents.length > 0
-        ? auditEvents[0].txHash
-        : "0x0000000000000000000000000000000000000000000000000000000000000000";
-    const newBlock = currentBlock + 1;
-    const txHash = await computeSha256Hex(
-      `${parentHash}|${newBlock}|VotersWhitelisted|${lines.join(",")}|${Date.now()}`
-    );
-    setCurrentBlock(newBlock);
+    if (!ethers.isAddress(regWalletAddr.trim())) {
+      setErrorBanner("Alamat wallet EVM tidak valid. Pastikan diawali 0x dan sepanjang 42 karakter.");
+      return;
+    }
 
-    const nextProfiles = walletProfiles.map((w) => {
-      const matched = lines.some(
-        (addr) => addr.toLowerCase() === w.address.toLowerCase()
+    setIsAdminSubmitting(true);
+    try {
+      const provider = getProvider();
+      const adminSigner = new ethers.Wallet(activeCredential.privateKey, provider);
+      const contract = new ethers.Contract(MEDVOTE_CONTRACT_ADDRESS, MEDVOTE_ABI, adminSigner);
+
+      const tx = await contract.registerVoter(
+        regWalletAddr.trim(),
+        regDocName.trim() || "Staf Medis Fungsional",
+        regDocDept.trim() || "Komite Medik RSUD",
+        {
+          type: 2,
+          maxFeePerGas: 0,
+          maxPriorityFeePerGas: 0,
+          gasLimit: 350000,
+        }
       );
-      if (matched) {
-        return {
-          ...w,
-          isWhitelisted: true,
-          department: "Terdaftar via Batch Whitelist Panitia",
-        };
-      }
-      return w;
-    });
 
-    const newEvent: OnChainAuditEvent = {
-      txHash,
-      parentHash,
-      blockNumber: newBlock,
-      eventName: "VotersWhitelisted",
-      voterOrActor: `${currentWallet.address.slice(0, 6)}...${currentWallet.address.slice(-4)}`,
-      voterLabel: `Batch Whitelist (${lines.length} Wallet Dokter Baru)`,
-      timestamp: new Date().toLocaleTimeString("id-ID", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-      gasUsed: `${52400 + lines.length * 22100}`,
-    };
+      const receipt = await tx.wait();
+      await syncOnChainData();
 
-    const nextEvents = [newEvent, ...auditEvents];
-    setWalletProfiles(nextProfiles);
-    setAuditEvents(nextEvents);
-    await persistLedgerState(candidates, nextProfiles, nextEvents, isElectionActive);
-
-    setAdminSuccessMsg(
-      `Transaksi whitelistVotersBatch() tersimpan permanen di Blok #${newBlock}! ${lines.length} alamat wallet dokter kini berstatus WHITELISTED.`
-    );
+      setAdminSuccessMsg({
+        message: `Dokter "${regDocName}" (${regWalletAddr.slice(0, 8)}...) berhasil didaftarkan ke DPT Smart Contract.`,
+        txHash: tx.hash,
+        blockNumber: Number(receipt.blockNumber),
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setErrorBanner(`Gagal mendaftarkan DPT: ${message.slice(0, 160)}`);
+    } finally {
+      setIsAdminSubmitting(false);
+    }
   };
 
-  // Admin: Add New Candidate
-  const handleAddCandidate = async (e: React.FormEvent) => {
+  // REAL ON-CHAIN ADMIN ADD CANDIDATE
+  const handleAddCandidateOnChain = async (e: React.FormEvent) => {
     e.preventDefault();
-    setAdminSuccessMsg(null);
     setErrorBanner(null);
+    setAdminSuccessMsg(null);
+
+    if (!isAdminRole) {
+      setErrorBanner(
+        "Smart Contract Revert — UnauthorizedAdmin(): Hanya Wallet Otoritas Komisi Pemilihan yang diizinkan mendaftarkan kandidat."
+      );
+      return;
+    }
 
     if (!newCandName.trim() || !newCandSpec.trim()) {
-      setErrorBanner("EmptyCandidateName(): Nama lengkap dokter dan spesialisasi wajib diisi.");
+      setErrorBanner("EmptyCandidateName(): Nama lengkap dokter dan gelar spesialisasi wajib diisi.");
       return;
     }
 
-    const newId = candidates.length;
-    const newCandidate: MedVoteCandidate = {
-      id: newId,
-      number: String(newId + 1).padStart(2, "0"),
-      name: newCandName.trim(),
-      specialist: newCandSpec.trim(),
-      department: newCandDept.trim() || "KSM Spesialis Terpadu",
-      nip: `19830519 201001 1 00${newId + 5}`,
-      experience: "12 Tahun Pengabdian Klinis",
-      visionMission:
+    setIsAdminSubmitting(true);
+    try {
+      const provider = getProvider();
+      const adminSigner = new ethers.Wallet(activeCredential.privateKey, provider);
+      const contract = new ethers.Contract(MEDVOTE_CONTRACT_ADDRESS, MEDVOTE_ABI, adminSigner);
+
+      const tx = await contract.addCandidate(
+        newCandName.trim(),
+        newCandSpec.trim(),
+        newCandDept.trim() || "KSM Spesialis Terpadu",
+        newCandNip.trim() || "19820714 200901 1 008",
+        "14 Tahun Pengabdian Klinis",
         newCandVision.trim() ||
-        "Peningkatan mutu pelayanan medis, tata kelola komite medik yang akuntabel, dan kolaborasi klinis modern.",
-      programs: [
-        "Transparansi kredensialing dan audit medis berkala berbasis data",
-        "Pengembangan kompetensi berkelanjutan bagi staf medis fungsional",
-      ],
-      avatarUrl:
+          "Peningkatan mutu klinis, tata kelola komite medik yang akuntabel, dan perlindungan profesi dokter.",
         "https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&w=600&q=80",
-      voteCount: 0,
-    };
+        {
+          type: 2,
+          maxFeePerGas: 0,
+          maxPriorityFeePerGas: 0,
+          gasLimit: 550000,
+        }
+      );
 
-    const parentHash =
-      auditEvents.length > 0
-        ? auditEvents[0].txHash
-        : "0x0000000000000000000000000000000000000000000000000000000000000000";
-    const newBlock = currentBlock + 1;
-    const txHash = await computeSha256Hex(
-      `${parentHash}|${newBlock}|CandidateAdded|${newCandidate.name}|${Date.now()}`
-    );
-    setCurrentBlock(newBlock);
+      const receipt = await tx.wait();
+      await syncOnChainData();
 
-    const nextCandidates = [...candidates, newCandidate];
-    const newEvent: OnChainAuditEvent = {
-      txHash,
-      parentHash,
-      blockNumber: newBlock,
-      eventName: "CandidateAdded",
-      voterOrActor: `${currentWallet.address.slice(0, 6)}...${currentWallet.address.slice(-4)}`,
-      voterLabel: `Kandidat #${newCandidate.number}: ${newCandidate.name}`,
-      candidateId: newId,
-      candidateName: newCandidate.name,
-      timestamp: new Date().toLocaleTimeString("id-ID", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-      gasUsed: "118,450",
-    };
-    const nextEvents = [newEvent, ...auditEvents];
+      setAdminSuccessMsg({
+        message: `Kandidat "${newCandName}" berhasil ditambahkan secara permanen ke Smart Contract.`,
+        txHash: tx.hash,
+        blockNumber: Number(receipt.blockNumber),
+      });
+      setNewCandName("");
+      setNewCandSpec("");
+      setNewCandDept("");
+      setNewCandNip("");
+      setNewCandVision("");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setErrorBanner(`Gagal mendaftarkan kandidat: ${message.slice(0, 160)}`);
+    } finally {
+      setIsAdminSubmitting(false);
+    }
+  };
 
-    setCandidates(nextCandidates);
-    setAuditEvents(nextEvents);
-    await persistLedgerState(nextCandidates, walletProfiles, nextEvents, isElectionActive);
+  // REAL ON-CHAIN TOGGLE ELECTION STATUS
+  const handleToggleElectionStatus = async () => {
+    if (!isAdminRole) return;
+    setIsAdminSubmitting(true);
+    setErrorBanner(null);
+    try {
+      const provider = getProvider();
+      const adminSigner = new ethers.Wallet(activeCredential.privateKey, provider);
+      const contract = new ethers.Contract(MEDVOTE_CONTRACT_ADDRESS, MEDVOTE_ABI, adminSigner);
 
-    setNewCandName("");
-    setNewCandSpec("");
-    setNewCandDept("");
-    setNewCandVision("");
-    setAdminSuccessMsg(
-      `Kandidat "${newCandidate.name}" berhasil disimpan ke Ledger Smart Contract pada Blok #${newBlock}.`
-    );
+      const tx = await contract.setElectionStatus(!isElectionActive, {
+        type: 2,
+        maxFeePerGas: 0,
+        maxPriorityFeePerGas: 0,
+        gasLimit: 200000,
+      });
+      const receipt = await tx.wait();
+      await syncOnChainData();
+      setAdminSuccessMsg({
+        message: `Status Bilik Suara berhasil diubah menjadi ${
+          !isElectionActive ? "AKTIF (DIBUKA)" : "DITUTUP SEMENTARA"
+        }.`,
+        txHash: tx.hash,
+        blockNumber: Number(receipt.blockNumber),
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setErrorBanner(`Gagal mengubah status pemilihan: ${message.slice(0, 140)}`);
+    } finally {
+      setIsAdminSubmitting(false);
+    }
   };
 
   const isMobileViewport = deviceMode === "mobile";
 
   return (
-    /* OUTER CONTAINER: relative + overflow-hidden ensures all modals stay strictly inside WorkView! */
+    /* OUTER CONTAINER: relative + overflow-hidden keeps modals strictly inside WorkView frame */
     <div className="relative w-full h-full bg-slate-50 text-slate-900 flex flex-col overflow-hidden selection:bg-sky-500 selection:text-white font-sans">
-      {/* SCROLLABLE MAIN VIEWPORT */}
       <div className="flex-1 w-full h-full overflow-y-auto flex flex-col">
         {/* =====================================================================
-            1. TOP NAVBAR (Light Mode + Bright Sky Blue Accent)
+            1. TOP NAVBAR: Hospital Identity, Live Network & Active Credential
            ===================================================================== */}
         <header className="sticky top-0 z-20 bg-white/95 backdrop-blur-md border-b border-sky-100 px-3 sm:px-5 py-2.5 shadow-2xs">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -660,121 +486,102 @@ export function MedVoteApp({ deviceMode = "desktop" }: MedVoteAppProps) {
                     MedVote<span className="text-sky-500">.RSUD</span>
                   </span>
                   <span className="px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase bg-sky-50 text-sky-600 border border-sky-200 rounded">
-                    Web3 DApp Ledger
+                    On-Chain E-Voting
                   </span>
                 </div>
                 <p className="text-[10px] text-slate-500 leading-none mt-0.5">
-                  Komite Medik RSUD &bull; SHA-256 Chained &amp; Persistent Ledger
+                  Komite Medik RSUD Kabupaten Bintan &bull; Smart Contract Governance
                 </p>
               </div>
             </div>
 
-            {/* Right Controls: Live Polygon RPC & Wallet Switcher */}
+            {/* Right Controls: Live Network Status & Credential Selector */}
             <div className="flex flex-wrap items-center gap-1.5">
-              {/* Live Polygon Amoy RPC Pill */}
               {!isMobileViewport && (
-                <button
-                  type="button"
-                  onClick={handleRunVerification}
-                  className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-sky-50 hover:bg-sky-100 border border-sky-200 text-[10.5px] font-mono text-sky-900 transition-colors cursor-pointer"
-                  title="Klik untuk Verifikasi Koneksi Live RPC Polygon Amoy & Keaslian Hash Chain"
+                <a
+                  href={MEDVOTE_EXPLORER_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-sky-50 hover:bg-sky-100 border border-sky-200 text-[10.5px] font-mono text-sky-900 transition-colors"
+                  title="Lihat Smart Contract di Blockscout Explorer"
                 >
-                  <span
-                    className={`w-2 h-2 rounded-full ${
-                      rpcConnected ? "bg-sky-500 animate-pulse" : "bg-amber-500"
-                    }`}
-                  />
+                  <span className="w-2 h-2 rounded-full bg-sky-500 animate-pulse" />
                   <span className="font-semibold">{MEDVOTE_NETWORK_NAME}</span>
                   <span className="text-sky-300">|</span>
-                  <span className="text-sky-600 font-bold">#{currentBlock}</span>
-                  {rpcLatencyMs !== null && (
-                    <span className="text-[9.5px] text-sky-500">({rpcLatencyMs}ms)</span>
-                  )}
-                </button>
+                  <span className="text-sky-600 font-bold">Block #{currentBlock}</span>
+                  <ExternalLink className="w-3 h-3 text-sky-500" />
+                </a>
               )}
 
-              {/* Demo Persona Switcher */}
-              <div className="flex items-center gap-1 bg-slate-100 border border-slate-200 rounded-md px-2 py-1">
+              {/* Active Wallet Credential Selector */}
+              <div className="flex items-center gap-1.5 bg-slate-100 border border-slate-200 rounded-md px-2.5 py-1">
                 <KeyRound className="w-3.5 h-3.5 text-sky-600 shrink-0" />
                 <select
-                  aria-label="Pilih Simulasi Wallet Dokter"
-                  value={selectedProfileIdx}
+                  aria-label="Kredensial Wallet Aktif"
+                  value={selectedCredIdx}
                   onChange={(e) => {
-                    setSelectedProfileIdx(Number(e.target.value));
-                    setIsWalletConnected(true);
+                    const nextIdx = Number(e.target.value);
+                    setSelectedCredIdx(nextIdx);
                     setErrorBanner(null);
                     setAdminSuccessMsg(null);
+                    if (ONCHAIN_WALLET_CREDENTIALS[nextIdx].role === "admin") {
+                      setActiveTab("admin");
+                    }
                   }}
-                  className="bg-transparent text-[11px] font-semibold text-slate-800 focus:outline-none cursor-pointer max-w-[155px] sm:max-w-[215px] truncate"
+                  className="bg-transparent text-[11px] font-semibold text-slate-800 focus:outline-none cursor-pointer max-w-[170px] sm:max-w-[245px] truncate"
                 >
-                  {walletProfiles.map((prof, idx) => (
-                    <option key={prof.address} value={idx} className="bg-white text-slate-900">
-                      {prof.role === "admin"
-                        ? "[ADMIN] "
-                        : prof.isWhitelisted
-                        ? "[WHITELISTED] "
-                        : "[UNREGISTERED] "}
-                      {prof.name}
+                  {ONCHAIN_WALLET_CREDENTIALS.map((cred, idx) => (
+                    <option key={cred.id} value={idx} className="bg-white text-slate-900">
+                      {cred.role === "admin" ? "Komisi Pemilihan: " : "Staf Medis: "}
+                      {cred.name}
                     </option>
                   ))}
                 </select>
               </div>
 
-              {/* Connect MetaMask / Connected Wallet Badge */}
-              <button
-                type="button"
-                onClick={handleConnectBrowserWallet}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-mono font-bold border transition-all cursor-pointer shadow-2xs ${
-                  isWalletConnected
-                    ? currentWallet.isWhitelisted
-                      ? "bg-sky-500 hover:bg-sky-600 border-sky-600 text-white"
-                      : "bg-amber-50 hover:bg-amber-100 border-amber-300 text-amber-800"
-                    : "bg-sky-500 hover:bg-sky-600 border-sky-600 text-white"
-                }`}
-                title={
-                  hasMetaMask
-                    ? "Klik untuk menghubungkan ekstensi MetaMask asli Anda"
-                    : "Wallet Terhubung (Simulasi Kriptografi Web3)"
-                }
-              >
+              {/* Connected Wallet Address Pill */}
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-mono font-bold bg-sky-500 text-white shadow-2xs">
                 <Wallet className="w-3.5 h-3.5" />
                 <span>
-                  {isWalletConnected
-                    ? `${currentWallet.address.slice(0, 6)}...${currentWallet.address.slice(-4)}`
-                    : "Connect Wallet"}
+                  {activeCredential.address.slice(0, 6)}...{activeCredential.address.slice(-4)}
                 </span>
-              </button>
+              </div>
             </div>
           </div>
 
-          {/* Connected Doctor Identity Bar */}
+          {/* Sub-bar: Credential Status & Role Separation Indicator */}
           <div className="mt-2 pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-[11px]">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-slate-500">Kredensial Dokter:</span>
-              <span className="font-bold text-slate-900">{currentWallet.name}</span>
+              <span className="text-slate-500">Identitas Kredensial:</span>
+              <span className="font-bold text-slate-900">{activeCredential.name}</span>
               <span className="text-slate-300 hidden sm:inline">&bull;</span>
               <span className="text-slate-500 text-[10.5px] hidden sm:inline">
-                {currentWallet.department}
+                {activeCredential.department}
               </span>
             </div>
 
             <div className="flex items-center gap-1.5">
-              {currentWallet.isWhitelisted ? (
+              {isAdminRole ? (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-mono font-bold">
+                  <ShieldCheck className="w-3 h-3 text-indigo-600" />
+                  <span>OTORITAS PANITIA (NON-PEMILIH)</span>
+                </span>
+              ) : voterStatus.isWhitelisted ? (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200 text-[10px] font-mono font-bold">
                   <CheckCircle2 className="w-3 h-3 text-sky-500" />
-                  <span>DPT TERVERIFIKASI</span>
+                  <span>TERDAFTAR DPT KOMITE MEDIK</span>
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-mono font-bold">
-                  <AlertTriangle className="w-3 h-3 text-rose-500" />
-                  <span>BELUM WHITELIST</span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-mono font-bold">
+                  <AlertTriangle className="w-3 h-3 text-amber-600" />
+                  <span>BELUM TERDAFTAR DPT</span>
                 </span>
               )}
 
-              {currentWallet.hasVoted && (
+              {!isAdminRole && voterStatus.hasVoted && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-mono font-bold">
                   <Lock className="w-3 h-3 text-emerald-600" />
-                  <span>SUDAH MEMILIH (TERKUNCI PERMANEN)</span>
+                  <span>SUDAH MEMILIH (ON-CHAIN)</span>
                 </span>
               )}
             </div>
@@ -782,7 +589,7 @@ export function MedVoteApp({ deviceMode = "desktop" }: MedVoteAppProps) {
         </header>
 
         {/* =====================================================================
-            2. HERO & PUBLIC BLOCKCHAIN AUDIT BANNER (Light Sky Blue Theme)
+            2. HERO & ON-CHAIN GOVERNANCE BANNER
            ===================================================================== */}
         <section className="px-3 sm:px-5 pt-3">
           <div className="rounded-xl bg-gradient-to-br from-sky-50 via-white to-sky-100/60 border border-sky-200 p-3.5 sm:p-4 shadow-xs">
@@ -797,54 +604,56 @@ export function MedVoteApp({ deviceMode = "desktop" }: MedVoteAppProps) {
                     }`}
                   >
                     <Activity className="w-3 h-3" />
-                    <span>{isElectionActive ? "ELECTION ACTIVE" : "ELECTION PAUSED"}</span>
+                    <span>{isElectionActive ? "BILIK SUARA AKTIF" : "PEMILIHAN DITUTUP"}</span>
                   </span>
-                  <span className="text-[11px] font-mono text-sky-700 font-semibold">
-                    Persistent Ledger Aktif (Anti-Reset Saat Refresh)
+                  <span className="text-[11px] font-mono text-slate-500">
+                    Periode Masa Bakti 2026 &ndash; 2029
                   </span>
                 </div>
 
                 <h1 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight">
-                  Pemilihan Ketua Komite Medik RSUD &mdash; E-Voting Blockchain
+                  Pemilihan Ketua Komite Medik RSUD Kabupaten Bintan
                 </h1>
                 <p className="text-xs text-slate-600 max-w-2xl leading-relaxed">
-                  Setiap suara ditandatangani secara kriptografis, di-hash menggunakan{" "}
-                  <strong>SHA-256 (Web Crypto API)</strong>, dan dirantai ke blok sebelumnya (
-                  <code className="text-sky-700 font-mono">parentHash</code>). Data tersimpan
-                  permanen di server &amp; local ledger sehingga tidak hilang saat halaman di-refresh.
+                  Sistem pemungutan suara elektronik terdesentralisasi berbasis Smart Contract.
+                  Menjamin asas 1 Dokter = 1 Suara, pemisahan mutlak wewenang Komisi Pemilihan
+                  (non-pemilih), serta transparansi audit publik secara real-time.
                 </p>
               </div>
 
-              {/* Live Audit Metrics Grid */}
+              {/* Live On-Chain Metrics */}
               <div className="grid grid-cols-3 gap-2 shrink-0">
                 <div className="bg-white border border-sky-200 rounded-lg p-2.5 text-center shadow-2xs">
-                  <div className="text-[10px] font-mono uppercase text-slate-500">Total Suara</div>
+                  <div className="text-[10px] font-mono uppercase text-slate-500">Suara Masuk</div>
                   <div className="text-base sm:text-lg font-extrabold text-sky-600 font-mono">
-                    {isHydrated ? totalVotes : "..."}
+                    {isLoadingChain ? "..." : totalVotes}
                   </div>
-                  <div className="text-[9.5px] text-slate-400">Tersimpan Permanen</div>
+                  <div className="text-[9.5px] text-slate-400">On-Chain Verified</div>
                 </div>
                 <div className="bg-white border border-sky-200 rounded-lg p-2.5 text-center shadow-2xs">
-                  <div className="text-[10px] font-mono uppercase text-slate-500">DPT Dokter</div>
+                  <div className="text-[10px] font-mono uppercase text-slate-500">DPT Terdaftar</div>
                   <div className="text-base sm:text-lg font-extrabold text-slate-900 font-mono">
-                    {totalWhitelistedDoctors}
+                    {isLoadingChain ? "..." : totalWhitelistedOnChain}
                   </div>
-                  <div className="text-[9.5px] text-slate-400">1 Wallet = 1 Vote</div>
+                  <div className="text-[9.5px] text-slate-400">Staf Medis Sah</div>
                 </div>
                 <div className="bg-white border border-sky-200 rounded-lg p-2.5 text-center shadow-2xs">
                   <div className="text-[10px] font-mono uppercase text-slate-500">Partisipasi</div>
                   <div className="text-base sm:text-lg font-extrabold text-sky-500 font-mono">
-                    {Math.min(100, Math.round((totalVotes / totalWhitelistedDoctors) * 100))}%
+                    {totalWhitelistedOnChain > 0
+                      ? Math.min(100, Math.round((totalVotes / totalWhitelistedOnChain) * 100))
+                      : 0}
+                    %
                   </div>
-                  <div className="text-[9.5px] text-slate-400">Quorum Sah</div>
+                  <div className="text-[9.5px] text-slate-400">Quorum Komite</div>
                 </div>
               </div>
             </div>
 
-            {/* Proof & Verification Bar */}
+            {/* Deployed Smart Contract Address & Public Explorer Link */}
             <div className="mt-3 pt-2.5 border-t border-sky-200/70 flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono">
               <div className="flex items-center gap-2 min-w-0">
-                <span className="text-slate-500 shrink-0">Contract:</span>
+                <span className="text-slate-500 shrink-0">Smart Contract Address:</span>
                 <code className="px-2 py-0.5 rounded bg-white border border-sky-200 text-sky-700 font-semibold truncate">
                   {MEDVOTE_CONTRACT_ADDRESS}
                 </code>
@@ -862,32 +671,32 @@ export function MedVoteApp({ deviceMode = "desktop" }: MedVoteAppProps) {
                 </button>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-3">
                 <button
                   type="button"
-                  onClick={handleRunVerification}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-sky-500 hover:bg-sky-600 text-white font-bold text-[10.5px] transition-colors cursor-pointer shadow-2xs"
+                  onClick={syncOnChainData}
+                  className="inline-flex items-center gap-1 text-slate-600 hover:text-sky-600 transition-colors cursor-pointer"
+                  title="Sinkronisasi ulang state langsung dari Smart Contract"
                 >
-                  <Cpu className="w-3.5 h-3.5" />
-                  <span>Buktikan Keaslian Blockchain &amp; RPC</span>
+                  <RefreshCw className={`w-3 h-3 ${isLoadingChain ? "animate-spin" : ""}`} />
+                  <span>Sync Node</span>
                 </button>
-
-                <button
-                  type="button"
-                  onClick={handleResetLedger}
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 text-[10.5px] transition-colors cursor-pointer"
-                  title="Reset ulang ledger ke data awal jika ingin mengulang demo dari nol"
+                <a
+                  href={MEDVOTE_EXPLORER_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-sky-600 hover:text-sky-700 font-bold transition-colors"
                 >
-                  <RotateCcw className="w-3 h-3" />
-                  <span>Reset Demo</span>
-                </button>
+                  <span>Blockscout Explorer</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
               </div>
             </div>
           </div>
         </section>
 
         {/* =====================================================================
-            3. NAVIGATION TABS (Light Mode with Sky Blue Active Pill)
+            3. NAVIGATION TABS
            ===================================================================== */}
         <div className="px-3 sm:px-5 pt-3">
           <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-200 pb-2">
@@ -914,7 +723,7 @@ export function MedVoteApp({ deviceMode = "desktop" }: MedVoteAppProps) {
               }`}
             >
               <BarChart3 className="w-3.5 h-3.5" />
-              <span>Live Leaderboard &amp; Audit Hash</span>
+              <span>Perolehan Suara &amp; Log Transaksi</span>
             </button>
 
             <button
@@ -927,7 +736,7 @@ export function MedVoteApp({ deviceMode = "desktop" }: MedVoteAppProps) {
               }`}
             >
               <UserPlus className="w-3.5 h-3.5" />
-              <span>Panel Admin Panitia (Whitelist)</span>
+              <span>Panel Komisi Pemilihan (DPT &amp; Kandidat)</span>
             </button>
 
             <button
@@ -940,12 +749,12 @@ export function MedVoteApp({ deviceMode = "desktop" }: MedVoteAppProps) {
               }`}
             >
               <Terminal className="w-3.5 h-3.5" />
-              <span>Smart Contract (MedVote.sol)</span>
+              <span>Kode Smart Contract (MedVote.sol)</span>
             </button>
           </div>
         </div>
 
-        {/* Error / Revert Alert Banner */}
+        {/* Error / Smart Contract Revert Alert Banner */}
         {errorBanner && (
           <div className="px-3 sm:px-5 pt-3">
             <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 flex items-start justify-between gap-3 text-xs text-rose-900">
@@ -953,7 +762,7 @@ export function MedVoteApp({ deviceMode = "desktop" }: MedVoteAppProps) {
                 <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                 <div>
                   <div className="font-bold text-rose-700 font-mono">
-                    EVM Smart Contract Revert Terdeteksi
+                    Penolakan Smart Contract (Transaction Reverted)
                   </div>
                   <p className="mt-0.5 leading-relaxed">{errorBanner}</p>
                 </div>
@@ -978,172 +787,202 @@ export function MedVoteApp({ deviceMode = "desktop" }: MedVoteAppProps) {
              ----------------------------------------------------------------- */}
           {activeTab === "voting" && (
             <div className="space-y-3">
-              {/* Voter Status Notice if already voted */}
-              {currentWallet.hasVoted && (
+              {/* Role Notice if Admin is viewing Bilik Suara */}
+              {isAdminRole && (
+                <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 flex items-center justify-between gap-2 text-xs text-indigo-950">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0" />
+                    <span>
+                      Anda sedang masuk sebagai{" "}
+                      <strong>Sekretariat Panitia Pemilihan (Komisi Independen)</strong>. Sesuai
+                      tata tertib pemilihan, Panitia tidak memiliki hak pilih dan hanya berwenang
+                      mengelola DPT pada tab <strong>Panel Komisi Pemilihan</strong>.
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Voter Status Notice if Doctor has already voted on-chain */}
+              {!isAdminRole && voterStatus.hasVoted && (
                 <div className="bg-sky-50 border border-sky-200 rounded-lg p-3 flex flex-wrap items-center justify-between gap-2 text-xs">
                   <div className="flex items-center gap-2 text-sky-900">
                     <CheckCircle2 className="w-4 h-4 text-sky-600 shrink-0" />
                     <span>
-                      Suara Anda untuk{" "}
+                      Hak suara Anda (<strong>{activeCredential.name}</strong>) untuk{" "}
                       <strong className="text-slate-900">
-                        {candidates.find((c) => c.id === currentWallet.votedCandidateId)?.name}
+                        {candidates.find((c) => c.id === voterStatus.votedCandidateId)?.name}
                       </strong>{" "}
-                      telah terkunci permanen di Blockchain Ledger (Coba refresh browser, suara Anda
-                      tetap tersimpan!).
+                      telah tercatat permanen di Smart Contract.
                     </span>
                   </div>
-                  {currentWallet.txHash && (
-                    <span className="font-mono text-[10.5px] text-sky-700 bg-white px-2 py-0.5 rounded border border-sky-200 font-semibold">
-                      SHA-256 Tx: {currentWallet.txHash.slice(0, 16)}...
-                    </span>
-                  )}
+                  <a
+                    href={MEDVOTE_EXPLORER_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 font-mono text-[10.5px] text-sky-700 bg-white px-2.5 py-1 rounded border border-sky-200 font-bold hover:bg-sky-100"
+                  >
+                    <span>Verifikasi di Blockscout</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
                 </div>
               )}
 
-              {/* Candidate Grid */}
-              <div
-                className={`grid gap-3.5 ${
-                  isMobileViewport ? "grid-cols-1" : "grid-cols-1 md:grid-cols-3"
-                }`}
-              >
-                {candidates.map((cand) => {
-                  const percentage =
-                    totalVotes > 0 ? Math.round((cand.voteCount / totalVotes) * 100) : 0;
-                  const isChosenByCurrent = currentWallet.votedCandidateId === cand.id;
+              {/* Loading Skeleton or Candidate Cards */}
+              {isLoadingChain && candidates.length === 0 ? (
+                <div className="py-14 flex flex-col items-center justify-center gap-2 text-sky-600 font-mono text-xs">
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                  <span>Memuat data kandidat dari Smart Contract ({MEDVOTE_CONTRACT_ADDRESS})...</span>
+                </div>
+              ) : (
+                <div
+                  className={`grid gap-3.5 ${
+                    isMobileViewport ? "grid-cols-1" : "grid-cols-1 md:grid-cols-3"
+                  }`}
+                >
+                  {candidates.map((cand) => {
+                    const percentage =
+                      totalVotes > 0 ? Math.round((cand.voteCount / totalVotes) * 100) : 0;
+                    const isChosenByCurrent =
+                      !isAdminRole &&
+                      voterStatus.hasVoted &&
+                      voterStatus.votedCandidateId === cand.id;
 
-                  return (
-                    <div
-                      key={cand.id}
-                      className={`rounded-xl bg-white border transition-all flex flex-col justify-between overflow-hidden shadow-xs ${
-                        isChosenByCurrent
-                          ? "border-sky-500 ring-2 ring-sky-400/30"
-                          : "border-slate-200 hover:border-sky-300"
-                      }`}
-                    >
-                      <div>
-                        {/* Card Top Header */}
-                        <div className="relative h-36 bg-slate-100 overflow-hidden">
-                          <img
-                            src={cand.avatarUrl}
-                            alt={cand.name}
-                            className="w-full h-full object-cover object-top"
-                          />
-                          <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-slate-900/20 to-transparent" />
+                    return (
+                      <div
+                        key={cand.id}
+                        className={`rounded-xl bg-white border transition-all flex flex-col justify-between overflow-hidden shadow-xs ${
+                          isChosenByCurrent
+                            ? "border-sky-500 ring-2 ring-sky-400/30"
+                            : "border-slate-200 hover:border-sky-300"
+                        }`}
+                      >
+                        <div>
+                          {/* Card Top Header */}
+                          <div className="relative h-36 bg-slate-100 overflow-hidden">
+                            <img
+                              src={cand.avatarUrl}
+                              alt={cand.name}
+                              className="w-full h-full object-cover object-top"
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-slate-900/20 to-transparent" />
 
-                          {/* Candidate Number Badge */}
-                          <div className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-md bg-white/95 backdrop-blur-xs border border-sky-200 font-mono text-xs font-extrabold text-sky-600 shadow-2xs">
-                            KANDIDAT #{cand.number}
+                            <div className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-md bg-white/95 backdrop-blur-xs border border-sky-200 font-mono text-xs font-extrabold text-sky-600 shadow-2xs">
+                              KANDIDAT #{cand.number}
+                            </div>
+
+                            <div className="absolute top-2.5 right-2.5 px-2.5 py-1 rounded-md bg-sky-500 text-white font-mono text-xs font-bold flex items-center gap-1 shadow-2xs">
+                              <span>{cand.voteCount}</span>
+                              <span className="text-[10px] text-sky-100">Suara ({percentage}%)</span>
+                            </div>
+
+                            <div className="absolute bottom-2 left-3 right-3 flex items-center justify-between">
+                              <span className="px-2 py-0.5 rounded bg-sky-500/90 text-white text-[10px] font-bold">
+                                {cand.department}
+                              </span>
+                              <span className="text-[10px] font-mono text-white/90 font-medium">
+                                {cand.experience}
+                              </span>
+                            </div>
                           </div>
 
-                          {/* Real-time Vote Pill */}
-                          <div className="absolute top-2.5 right-2.5 px-2.5 py-1 rounded-md bg-sky-500 text-white font-mono text-xs font-bold flex items-center gap-1 shadow-2xs">
-                            <span>{cand.voteCount}</span>
-                            <span className="text-[10px] text-sky-100">Suara ({percentage}%)</span>
-                          </div>
+                          {/* Doctor Info & Vision */}
+                          <div className="p-3.5 space-y-2.5">
+                            <div>
+                              <h3 className="font-bold text-sm text-slate-900 leading-snug">
+                                {cand.name}
+                              </h3>
+                              <p className="text-[11px] text-sky-600 font-semibold mt-0.5">
+                                {cand.specialist}
+                              </p>
+                              <p className="text-[10px] font-mono text-slate-400 mt-0.5">
+                                NIP: {cand.nip}
+                              </p>
+                            </div>
 
-                          {/* Department tag */}
-                          <div className="absolute bottom-2 left-3 right-3 flex items-center justify-between">
-                            <span className="px-2 py-0.5 rounded bg-sky-500/90 text-white text-[10px] font-bold">
-                              {cand.department}
-                            </span>
-                            <span className="text-[10px] font-mono text-white/90 font-medium">
-                              {cand.experience}
-                            </span>
+                            <div className="p-2.5 rounded-lg bg-sky-50/60 border border-sky-100">
+                              <div className="text-[10px] font-mono uppercase text-sky-700 font-bold mb-1">
+                                Visi &amp; Misi Utama:
+                              </div>
+                              <p className="text-[11.5px] text-slate-700 leading-relaxed">
+                                &ldquo;{cand.visionMission}&rdquo;
+                              </p>
+                            </div>
+
+                            <div className="space-y-1">
+                              <div className="text-[10px] font-mono uppercase text-slate-500 font-semibold">
+                                Program Prioritas:
+                              </div>
+                              <ul className="space-y-1">
+                                {cand.programs.map((prog, i) => (
+                                  <li
+                                    key={i}
+                                    className="flex items-start gap-1.5 text-[11px] text-slate-600 leading-snug"
+                                  >
+                                    <ChevronRight className="w-3.5 h-3.5 text-sky-500 shrink-0 mt-0.5" />
+                                    <span>{prog}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
                           </div>
                         </div>
 
-                        {/* Doctor Info & Vision */}
-                        <div className="p-3.5 space-y-2.5">
-                          <div>
-                            <h3 className="font-bold text-sm text-slate-900 leading-snug">
-                              {cand.name}
-                            </h3>
-                            <p className="text-[11px] text-sky-600 font-semibold mt-0.5">
-                              {cand.specialist}
-                            </p>
-                            <p className="text-[10px] font-mono text-slate-400 mt-0.5">
-                              NIP: {cand.nip}
-                            </p>
+                        {/* Vote Action Footer */}
+                        <div className="p-3.5 pt-0 space-y-2">
+                          <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-sky-400 to-sky-600 transition-all duration-500"
+                              style={{ width: `${percentage}%` }}
+                            />
                           </div>
 
-                          <div className="p-2.5 rounded-lg bg-sky-50/60 border border-sky-100">
-                            <div className="text-[10px] font-mono uppercase text-sky-700 font-bold mb-1">
-                              Visi &amp; Misi Utama:
-                            </div>
-                            <p className="text-[11.5px] text-slate-700 leading-relaxed">
-                              &ldquo;{cand.visionMission}&rdquo;
-                            </p>
-                          </div>
-
-                          {/* Key Programs */}
-                          <div className="space-y-1">
-                            <div className="text-[10px] font-mono uppercase text-slate-500 font-semibold">
-                              Program Prioritas:
-                            </div>
-                            <ul className="space-y-1">
-                              {cand.programs.map((prog, i) => (
-                                <li
-                                  key={i}
-                                  className="flex items-start gap-1.5 text-[11px] text-slate-600 leading-snug"
-                                >
-                                  <ChevronRight className="w-3.5 h-3.5 text-sky-500 shrink-0 mt-0.5" />
-                                  <span>{prog}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
+                          <button
+                            type="button"
+                            disabled={isAdminRole || voterStatus.hasVoted}
+                            onClick={() => handleCastVote(cand)}
+                            className={`w-full py-2.5 px-3 rounded-lg font-mono text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all ${
+                              isAdminRole
+                                ? "bg-slate-100 border border-slate-200 text-slate-400 cursor-not-allowed"
+                                : isChosenByCurrent
+                                ? "bg-sky-50 border border-sky-400 text-sky-700 cursor-default"
+                                : voterStatus.hasVoted
+                                ? "bg-slate-100 border border-slate-200 text-slate-400 cursor-not-allowed"
+                                : "bg-sky-500 hover:bg-sky-600 text-white shadow-xs cursor-pointer"
+                            }`}
+                          >
+                            {isAdminRole ? (
+                              <>
+                                <Lock className="w-3.5 h-3.5" />
+                                <span>Panitia Pemilihan (Non-Pemilih)</span>
+                              </>
+                            ) : isChosenByCurrent ? (
+                              <>
+                                <CheckCircle2 className="w-4 h-4 text-sky-600" />
+                                <span>Pilihan Anda (Tercatat On-Chain)</span>
+                              </>
+                            ) : voterStatus.hasVoted ? (
+                              <>
+                                <Lock className="w-3.5 h-3.5" />
+                                <span>Hak Suara Telah Digunakan</span>
+                              </>
+                            ) : (
+                              <>
+                                <ShieldCheck className="w-4 h-4" />
+                                <span>Berikan Suara &bull; Kandidat #{cand.number}</span>
+                              </>
+                            )}
+                          </button>
                         </div>
                       </div>
-
-                      {/* Vote Action Footer */}
-                      <div className="p-3.5 pt-0 space-y-2">
-                        {/* Mini Progress Bar */}
-                        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-gradient-to-r from-sky-400 to-sky-600 transition-all duration-500"
-                            style={{ width: `${percentage}%` }}
-                          />
-                        </div>
-
-                        <button
-                          type="button"
-                          disabled={currentWallet.hasVoted}
-                          onClick={() => handleCastVote(cand)}
-                          className={`w-full py-2.5 px-3 rounded-lg font-mono text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all ${
-                            isChosenByCurrent
-                              ? "bg-sky-50 border border-sky-400 text-sky-700 cursor-default"
-                              : currentWallet.hasVoted
-                              ? "bg-slate-100 border border-slate-200 text-slate-400 cursor-not-allowed"
-                              : "bg-sky-500 hover:bg-sky-600 text-white shadow-xs cursor-pointer"
-                          }`}
-                        >
-                          {isChosenByCurrent ? (
-                            <>
-                              <CheckCircle2 className="w-4 h-4 text-sky-600" />
-                              <span>Pilihan Anda (Tercatat On-Chain)</span>
-                            </>
-                          ) : currentWallet.hasVoted ? (
-                            <>
-                              <Lock className="w-3.5 h-3.5" />
-                              <span>Hak Suara Telah Digunakan</span>
-                            </>
-                          ) : (
-                            <>
-                              <ShieldCheck className="w-4 h-4" />
-                              <span>Cast Vote &bull; Kandidat #{cand.number}</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
           {/* -----------------------------------------------------------------
-              TAB 2: LIVE LEADERBOARD & REAL-TIME AUDIT LOG
+              TAB 2: PEROLEHAN SUARA & LOG TRANSAKSI ON-CHAIN
              ----------------------------------------------------------------- */}
           {activeTab === "leaderboard" && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
@@ -1153,10 +992,11 @@ export function MedVoteApp({ deviceMode = "desktop" }: MedVoteAppProps) {
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
                       <BarChart3 className="w-4 h-4 text-sky-500" />
-                      <span>Real-Time On-Chain Leaderboard</span>
+                      <span>Rekapitulasi Perolehan Suara</span>
                     </h2>
                     <p className="text-[11px] text-slate-500">
-                      State diambil dari Persistent Ledger <code className="text-sky-600">getResults()</code>
+                      Data real-time dari fungsi Smart Contract{" "}
+                      <code className="text-sky-600">getResults()</code>
                     </p>
                   </div>
                   <span className="px-2 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200 font-mono text-[10px] font-bold">
@@ -1218,17 +1058,17 @@ export function MedVoteApp({ deviceMode = "desktop" }: MedVoteAppProps) {
                 </div>
               </div>
 
-              {/* Right: Immutable Blockchain Event Log */}
+              {/* Right: Real On-Chain Event Log with Direct Blockscout Links */}
               <div className="lg:col-span-7 bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-2xs">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
                       <Activity className="w-4 h-4 text-sky-500" />
-                      <span>Public Blockchain Audit Trail (SHA-256 Hash Chain)</span>
+                      <span>Jejak Audit Transaksi Blockchain (Event VoteCast)</span>
                     </h2>
                     <p className="text-[11px] text-slate-500">
-                      Klik baris transaksi untuk menginspeksi <code className="text-sky-600">parentHash</code> &amp;{" "}
-                      <code className="text-sky-600">ECDSA Signature</code>
+                      Setiap transaksi tercatat permanen dan dapat diverifikasi langsung di
+                      Blockscout Explorer
                     </p>
                   </div>
                   <span className="text-[10px] font-mono text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-200 font-bold">
@@ -1240,40 +1080,35 @@ export function MedVoteApp({ deviceMode = "desktop" }: MedVoteAppProps) {
                   {auditEvents.map((ev, i) => (
                     <div
                       key={ev.txHash + i}
-                      onClick={() => setInspectedEvent(ev)}
-                      className="p-2.5 rounded-lg bg-slate-50 hover:bg-sky-50/50 border border-slate-200 hover:border-sky-300 transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+                      className="p-2.5 rounded-lg bg-slate-50 hover:bg-sky-50/50 border border-slate-200 hover:border-sky-300 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
                     >
                       <div className="space-y-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span
-                            className={`px-1.5 py-0.5 rounded font-mono text-[10px] font-bold ${
-                              ev.eventName === "VoteCast"
-                                ? "bg-sky-100 text-sky-800 border border-sky-200"
-                                : "bg-indigo-50 text-indigo-700 border border-indigo-200"
-                            }`}
-                          >
+                          <span className="px-1.5 py-0.5 rounded font-mono text-[10px] font-bold bg-sky-100 text-sky-800 border border-sky-200">
                             {ev.eventName}
                           </span>
-                          <span className="font-mono text-[11px] text-slate-700 font-semibold truncate">
-                            Tx: {ev.txHash.slice(0, 18)}...
-                          </span>
+                          <a
+                            href={`${MEDVOTE_EXPLORER_BASE}/tx/${ev.txHash}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-mono text-[11px] text-sky-600 hover:text-sky-800 font-bold truncate inline-flex items-center gap-1"
+                          >
+                            <span>Tx: {ev.txHash.slice(0, 18)}...</span>
+                            <ExternalLink className="w-3 h-3 shrink-0" />
+                          </a>
                         </div>
 
                         <div className="text-[11px] text-slate-600">
-                          <span className="text-slate-400">Actor:</span>{" "}
+                          <span className="text-slate-400">Pemilih:</span>{" "}
                           <span className="font-mono text-slate-900 font-semibold">
                             {ev.voterOrActor}
                           </span>{" "}
-                          {ev.voterLabel && (
-                            <span className="text-sky-600 font-medium">
-                              &bull; {ev.voterLabel}
-                            </span>
-                          )}
+                          <span className="text-sky-600 font-medium">&bull; {ev.voterLabel}</span>
                         </div>
 
                         {ev.candidateName && (
                           <div className="text-[11px] text-slate-500">
-                            Pilihan Terenkripsi:{" "}
+                            Kandidat Dipilih:{" "}
                             <span className="text-slate-900 font-semibold">{ev.candidateName}</span>
                           </div>
                         )}
@@ -1281,7 +1116,6 @@ export function MedVoteApp({ deviceMode = "desktop" }: MedVoteAppProps) {
 
                       <div className="text-left sm:text-right font-mono text-[10px] text-slate-500 shrink-0 space-y-0.5">
                         <div className="text-sky-600 font-bold">Block #{ev.blockNumber}</div>
-                        <div>Parent: {ev.parentHash.slice(0, 10)}...</div>
                         <div className="flex items-center sm:justify-end gap-1 text-slate-400">
                           <Clock className="w-3 h-3" />
                           <span>{ev.timestamp}</span>
@@ -1295,42 +1129,78 @@ export function MedVoteApp({ deviceMode = "desktop" }: MedVoteAppProps) {
           )}
 
           {/* -----------------------------------------------------------------
-              TAB 3: PANEL ADMIN PANITIA (WHITELIST & CANDIDATE MANAGEMENT)
+              TAB 3: PANEL KOMISI PEMILIHAN (DPT WHITELIST & KANDIDAT)
              ----------------------------------------------------------------- */}
           {activeTab === "admin" && (
             <div className="space-y-3">
-              {adminSuccessMsg && (
-                <div className="bg-sky-50 border border-sky-300 rounded-lg p-3 flex items-center justify-between gap-2 text-xs text-sky-950">
+              {/* Role Access Control Banner */}
+              {!isAdminRole && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-center justify-between gap-3 text-xs text-amber-900">
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-sky-600 shrink-0" />
-                    <span className="font-medium">{adminSuccessMsg}</span>
+                    <Lock className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>
+                      <strong>Mode Baca (Read-Only):</strong> Anda saat ini terhubung sebagai Pemilih
+                      (<strong>{activeCredential.name}</strong>). Untuk mengeksekusi transaksi
+                      pendaftaran DPT atau Kandidat ke Smart Contract, ubah kredensial di pojok
+                      kanan atas ke{" "}
+                      <strong>Komisi Pemilihan: Sekretariat Panitia Pemilihan Komite Medik</strong>.
+                    </span>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setAdminSuccessMsg(null)}
-                    className="text-sky-600 hover:text-sky-900 cursor-pointer"
+                    onClick={() => setSelectedCredIdx(4)}
+                    className="px-3 py-1.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white font-mono text-[10.5px] font-bold shrink-0 cursor-pointer"
                   >
-                    <X className="w-4 h-4" />
+                    Beralih ke Panitia
                   </button>
                 </div>
               )}
 
+              {adminSuccessMsg && (
+                <div className="bg-sky-50 border border-sky-300 rounded-lg p-3 flex flex-wrap items-center justify-between gap-2 text-xs text-sky-950">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-sky-600 shrink-0" />
+                    <span className="font-medium">
+                      {adminSuccessMsg.message} (Block #{adminSuccessMsg.blockNumber})
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={`${MEDVOTE_EXPLORER_BASE}/tx/${adminSuccessMsg.txHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white border border-sky-200 text-sky-700 font-mono text-[10.5px] font-bold hover:bg-sky-100"
+                    >
+                      <span>Lihat Tx di Blockscout</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setAdminSuccessMsg(null)}
+                      className="text-sky-600 hover:text-sky-900 cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {/* Left: Batch Whitelist Doctor Wallets */}
+                {/* Left: Register Doctor Wallet into DPT (Whitelist) */}
                 <form
-                  onSubmit={handleBatchWhitelist}
+                  onSubmit={handleRegisterVoterOnChain}
                   className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-2xs"
                 >
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
                     <div>
                       <h2 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
                         <Users className="w-4 h-4 text-sky-500" />
-                        <span>Batch Whitelist Wallet Dokter (DPT)</span>
+                        <span>Registrasi Dokter ke DPT (Whitelist Wallet)</span>
                       </h2>
                       <p className="text-[11px] text-slate-500">
                         Fungsi Smart Contract:{" "}
                         <code className="text-sky-600 font-semibold">
-                          whitelistVotersBatch(address[])
+                          registerVoter(address, name, department)
                         </code>
                       </p>
                     </div>
@@ -1339,91 +1209,106 @@ export function MedVoteApp({ deviceMode = "desktop" }: MedVoteAppProps) {
                     </span>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-semibold text-slate-700">
-                      Daftar Alamat Wallet Ethereum/Polygon Dokter (1 Baris = 1 Dokter):
-                    </label>
-                    <textarea
-                      rows={4}
-                      value={batchWhitelistInput}
-                      onChange={(e) => setBatchWhitelistInput(e.target.value)}
-                      placeholder="0x90F79bf6EB2c4f870365E785982E1f101E93b906"
-                      className="w-full rounded-lg bg-slate-50 border border-slate-300 p-2.5 font-mono text-xs text-sky-800 focus:outline-none focus:border-sky-500"
-                    />
-                    <p className="text-[10.5px] text-slate-500">
-                      Tip Uji Coba: Alamat pertama di atas (
-                      <code className="text-slate-800 font-semibold">0x90F7...b906</code>) adalah
-                      milik <strong>dr. Kevin Pratama (Belum Whitelist)</strong>. Klik tombol di
-                      bawah untuk mengotorisasi hak suaranya!
-                    </p>
+                  <div className="space-y-2.5">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                        Alamat Wallet EVM Dokter *
+                      </label>
+                      <input
+                        type="text"
+                        disabled={!isAdminRole || isAdminSubmitting}
+                        value={regWalletAddr}
+                        onChange={(e) => setRegWalletAddr(e.target.value)}
+                        placeholder="0x..."
+                        className="w-full rounded-lg bg-slate-50 border border-slate-300 px-2.5 py-1.5 font-mono text-xs text-sky-800 focus:outline-none focus:border-sky-500 disabled:opacity-60"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                          Nama Lengkap &amp; Gelar Dokter *
+                        </label>
+                        <input
+                          type="text"
+                          disabled={!isAdminRole || isAdminSubmitting}
+                          value={regDocName}
+                          onChange={(e) => setRegDocName(e.target.value)}
+                          placeholder="dr. Kevin Pratama, Sp.OT"
+                          className="w-full rounded-lg bg-slate-50 border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-sky-500 disabled:opacity-60"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                          KSM / Departemen *
+                        </label>
+                        <input
+                          type="text"
+                          disabled={!isAdminRole || isAdminSubmitting}
+                          value={regDocDept}
+                          onChange={(e) => setRegDocDept(e.target.value)}
+                          placeholder="KSM Orthopaedi & Traumatologi"
+                          className="w-full rounded-lg bg-slate-50 border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-sky-500 disabled:opacity-60"
+                        />
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setBatchWhitelistInput((prev) =>
-                          `${prev}\n${generateRandomHex(40)}`.trim()
-                        )
-                      }
-                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-mono cursor-pointer"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      <span>+ Generate Sample Wallet</span>
-                    </button>
-
-                    <button
-                      type="submit"
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-sky-500 hover:bg-sky-600 text-white font-mono text-xs font-bold uppercase cursor-pointer shadow-xs"
-                    >
-                      <ShieldCheck className="w-4 h-4" />
-                      <span>Execute Whitelist On-Chain</span>
-                    </button>
-                  </div>
+                  <button
+                    type="submit"
+                    disabled={!isAdminRole || isAdminSubmitting}
+                    className="w-full py-2 rounded-lg bg-sky-500 hover:bg-sky-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-mono text-xs font-bold uppercase cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
+                  >
+                    {isAdminSubmitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Memproses Transaksi On-Chain...</span>
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck className="w-4 h-4" />
+                        <span>Otorisasi Hak Pilih ke Smart Contract</span>
+                      </>
+                    )}
+                  </button>
 
                   {/* Election Status Switcher */}
                   <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
                     <div>
                       <div className="text-xs font-bold text-slate-900">
-                        Status Bilik Suara (Smart Contract)
+                        Status Periode Pemungutan Suara
                       </div>
                       <div className="text-[10.5px] text-slate-500">
-                        Panitia dapat membekukan sementara atau membuka kembali pemilihan
+                        Buka atau tutup sementara akses Bilik Suara pada Smart Contract
                       </div>
                     </div>
                     <button
                       type="button"
-                      onClick={async () => {
-                        const nextState = !isElectionActive;
-                        setIsElectionActive(nextState);
-                        await persistLedgerState(
-                          candidates,
-                          walletProfiles,
-                          auditEvents,
-                          nextState
-                        );
-                      }}
-                      className={`px-3 py-1.5 rounded-lg font-mono text-xs font-bold border cursor-pointer transition-colors ${
-                        isElectionActive
-                          ? "bg-amber-50 border-amber-300 text-amber-800 hover:bg-amber-100"
-                          : "bg-sky-50 border-sky-300 text-sky-700 hover:bg-sky-100"
+                      disabled={!isAdminRole || isAdminSubmitting}
+                      onClick={handleToggleElectionStatus}
+                      className={`px-3 py-1.5 rounded-lg font-mono text-xs font-bold border transition-colors ${
+                        !isAdminRole
+                          ? "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed"
+                          : isElectionActive
+                          ? "bg-amber-50 border-amber-300 text-amber-800 hover:bg-amber-100 cursor-pointer"
+                          : "bg-sky-50 border-sky-300 text-sky-700 hover:bg-sky-100 cursor-pointer"
                       }`}
                     >
-                      {isElectionActive ? "Pause Election" : "Resume Election"}
+                      {isElectionActive ? "Tutup Bilik Suara" : "Buka Bilik Suara"}
                     </button>
                   </div>
                 </form>
 
                 {/* Right: Add Candidate Form */}
                 <form
-                  onSubmit={handleAddCandidate}
+                  onSubmit={handleAddCandidateOnChain}
                   className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-2xs"
                 >
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
                     <div>
                       <h2 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
                         <Building2 className="w-4 h-4 text-sky-500" />
-                        <span>Daftarkan Kandidat Ketua Komite Medik</span>
+                        <span>Registrasi Kandidat Ketua Komite Medik</span>
                       </h2>
                       <p className="text-[11px] text-slate-500">
                         Fungsi Smart Contract:{" "}
@@ -1442,10 +1327,11 @@ export function MedVoteApp({ deviceMode = "desktop" }: MedVoteAppProps) {
                       </label>
                       <input
                         type="text"
+                        disabled={!isAdminRole || isAdminSubmitting}
                         value={newCandName}
                         onChange={(e) => setNewCandName(e.target.value)}
                         placeholder="dr. Lukman Hakim, Sp.OG(K)"
-                        className="w-full rounded-lg bg-slate-50 border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-sky-500"
+                        className="w-full rounded-lg bg-slate-50 border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-sky-500 disabled:opacity-60"
                       />
                     </div>
                     <div>
@@ -1454,25 +1340,42 @@ export function MedVoteApp({ deviceMode = "desktop" }: MedVoteAppProps) {
                       </label>
                       <input
                         type="text"
+                        disabled={!isAdminRole || isAdminSubmitting}
                         value={newCandSpec}
                         onChange={(e) => setNewCandSpec(e.target.value)}
                         placeholder="Spesialis Obstetri & Ginekologi"
-                        className="w-full rounded-lg bg-slate-50 border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-sky-500"
+                        className="w-full rounded-lg bg-slate-50 border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-sky-500 disabled:opacity-60"
                       />
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                      KSM / Departemen Rumah Sakit
-                    </label>
-                    <input
-                      type="text"
-                      value={newCandDept}
-                      onChange={(e) => setNewCandDept(e.target.value)}
-                      placeholder="KSM Kebidanan & Kandungan"
-                      className="w-full rounded-lg bg-slate-50 border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-sky-500"
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                        KSM / Departemen Rumah Sakit
+                      </label>
+                      <input
+                        type="text"
+                        disabled={!isAdminRole || isAdminSubmitting}
+                        value={newCandDept}
+                        onChange={(e) => setNewCandDept(e.target.value)}
+                        placeholder="KSM Kebidanan & Kandungan"
+                        className="w-full rounded-lg bg-slate-50 border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-sky-500 disabled:opacity-60"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                        NIP Dokter
+                      </label>
+                      <input
+                        type="text"
+                        disabled={!isAdminRole || isAdminSubmitting}
+                        value={newCandNip}
+                        onChange={(e) => setNewCandNip(e.target.value)}
+                        placeholder="19820714 200901 1 008"
+                        className="w-full rounded-lg bg-slate-50 border border-slate-300 px-2.5 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-sky-500 disabled:opacity-60"
+                      />
+                    </div>
                   </div>
 
                   <div>
@@ -1481,19 +1384,30 @@ export function MedVoteApp({ deviceMode = "desktop" }: MedVoteAppProps) {
                     </label>
                     <textarea
                       rows={2}
+                      disabled={!isAdminRole || isAdminSubmitting}
                       value={newCandVision}
                       onChange={(e) => setNewCandVision(e.target.value)}
                       placeholder="Penguatan mutu pelayanan maternal-perinatal dan transparansi komite medik..."
-                      className="w-full rounded-lg bg-slate-50 border border-slate-300 p-2 text-xs text-slate-900 focus:outline-none focus:border-sky-500"
+                      className="w-full rounded-lg bg-slate-50 border border-slate-300 p-2 text-xs text-slate-900 focus:outline-none focus:border-sky-500 disabled:opacity-60"
                     />
                   </div>
 
                   <button
                     type="submit"
-                    className="w-full py-2 rounded-lg bg-sky-500 hover:bg-sky-600 text-white font-mono text-xs font-bold uppercase cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
+                    disabled={!isAdminRole || isAdminSubmitting}
+                    className="w-full py-2 rounded-lg bg-sky-500 hover:bg-sky-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-mono text-xs font-bold uppercase cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
                   >
-                    <UserPlus className="w-4 h-4" />
-                    <span>Deploy Kandidat Baru ke Smart Contract</span>
+                    {isAdminSubmitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Memproses Transaksi On-Chain...</span>
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus className="w-4 h-4" />
+                        <span>Simpan Kandidat ke Smart Contract</span>
+                      </>
+                    )}
                   </button>
                 </form>
               </div>
@@ -1513,12 +1427,18 @@ export function MedVoteApp({ deviceMode = "desktop" }: MedVoteAppProps) {
                       <span>contracts/MedVote.sol (Solidity ^0.8.20)</span>
                     </h2>
                     <p className="text-[11px] text-slate-500">
-                      Gas-Optimized dengan Custom Errors &amp; Unchecked Arithmetic
+                      Deployed at <code className="text-sky-600">{MEDVOTE_CONTRACT_ADDRESS}</code> (Block #{MEDVOTE_DEPLOY_BLOCK})
                     </p>
                   </div>
-                  <span className="px-2 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200 font-mono text-[10px] font-bold">
-                    Verified Source
-                  </span>
+                  <a
+                    href={MEDVOTE_EXPLORER_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-2 py-0.5 rounded bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 font-mono text-[10px] font-bold inline-flex items-center gap-1"
+                  >
+                    <span>Explorer</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
                 </div>
 
                 <pre className="p-3 rounded-lg bg-slate-900 text-sky-300 font-mono text-[11px] overflow-x-auto max-h-[340px] leading-relaxed">
@@ -1527,37 +1447,37 @@ pragma solidity ^0.8.20;
 
 contract MedVote {
     error UnauthorizedAdmin();
+    error AdminCannotVote();
     error ElectionNotActive();
     error VoterNotWhitelisted();
     error VoterAlreadyVoted();
 
-    struct Candidate {
-        uint256 id;
-        string name;
-        string specialist;
-        string visionMission;
-        string avatarUrl;
-        uint256 voteCount;
-    }
-
-    struct VoterInfo {
-        bool isWhitelisted;
-        bool hasVoted;
-        uint256 votedCandidateId;
-        uint256 votedTimestamp;
-    }
-
     address public immutable electionAdmin;
     bool public isElectionActive;
     uint256 public totalVotesCast;
-    Candidate[] private candidates;
-    mapping(address => VoterInfo) public voters;
 
-    event VoteCast(address indexed voter, uint256 indexed candidateId, uint256 timestamp);
-    event VotersWhitelisted(uint256 count, address indexed addedBy);
+    modifier onlyAdmin() {
+        if (msg.sender != electionAdmin) revert UnauthorizedAdmin();
+        _;
+    }
+
+    function registerVoter(
+        address _doctorWallet,
+        string calldata _doctorName,
+        string calldata _department
+    ) external onlyAdmin {
+        if (_doctorWallet == address(0) || _doctorWallet == electionAdmin) {
+            revert AdminCannotVote();
+        }
+        voters[_doctorWallet].isWhitelisted = true;
+        voters[_doctorWallet].doctorName = _doctorName;
+        voters[_doctorWallet].department = _department;
+    }
 
     function vote(uint256 _candidateId) external {
         if (!isElectionActive) revert ElectionNotActive();
+        if (msg.sender == electionAdmin) revert AdminCannotVote();
+
         VoterInfo storage sender = voters[msg.sender];
         if (!sender.isWhitelisted) revert VoterNotWhitelisted();
         if (sender.hasVoted) revert VoterAlreadyVoted();
@@ -1570,11 +1490,7 @@ contract MedVote {
             candidates[_candidateId].voteCount += 1;
             totalVotesCast += 1;
         }
-        emit VoteCast(msg.sender, _candidateId, block.timestamp);
-    }
-
-    function getResults() external view returns (Candidate[] memory) {
-        return candidates;
+        emit VoteCast(msg.sender, sender.doctorName, _candidateId, candidates[_candidateId].name, block.timestamp);
     }
 }`}
                 </pre>
@@ -1583,16 +1499,14 @@ contract MedVote {
               <div className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-4 space-y-2.5 shadow-2xs">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                   <div>
-                    <h2 className="text-sm font-bold text-slate-900">Contract ABI Specification</h2>
+                    <h2 className="text-sm font-bold text-slate-900">Ethers.js Human-Readable ABI</h2>
                     <p className="text-[11px] text-slate-500">
-                      Digunakan oleh Wagmi / Viem / Web3 Provider di Next.js
+                      Interface interaksi langsung ke node RPC EVM
                     </p>
                   </div>
                   <button
                     type="button"
-                    onClick={() =>
-                      handleCopy(JSON.stringify(MEDVOTE_ABI_SUMMARY, null, 2), "abi")
-                    }
+                    onClick={() => handleCopy(JSON.stringify(MEDVOTE_ABI, null, 2), "abi")}
                     className="px-2 py-1 rounded bg-sky-50 hover:bg-sky-100 border border-sky-200 text-xs font-mono text-sky-700 font-bold flex items-center gap-1 cursor-pointer"
                   >
                     {copiedText === "abi" ? (
@@ -1610,7 +1524,7 @@ contract MedVote {
                 </div>
 
                 <pre className="p-3 rounded-lg bg-slate-900 text-slate-200 font-mono text-[10.5px] overflow-x-auto max-h-[340px]">
-                  {JSON.stringify(MEDVOTE_ABI_SUMMARY, null, 2)}
+                  {JSON.stringify(MEDVOTE_ABI, null, 2)}
                 </pre>
               </div>
             </div>
@@ -1619,7 +1533,7 @@ contract MedVote {
       </div>
 
       {/* =====================================================================
-          5. BLOCKCHAIN TRANSACTION MINING MODAL
+          5. REAL ON-CHAIN BLOCKCHAIN TRANSACTION MODAL
           NOTE: Uses "absolute inset-0 z-50" so it stays STRICTLY inside WorkView!
          ===================================================================== */}
       {txStage !== "idle" && pendingCandidate && (
@@ -1630,8 +1544,8 @@ contract MedVote {
                 <ShieldCheck className="w-5 h-5 text-sky-500" />
                 <span className="font-extrabold text-sm text-slate-900">
                   {txStage === "confirmed"
-                    ? "Suara Terverifikasi & Tersimpan Permanen!"
-                    : "Memproses Transaksi Smart Contract..."}
+                    ? "Transaksi Suara Dikonfirmasi di Blockchain!"
+                    : "Mengirim Transaksi ke Smart Contract..."}
                 </span>
               </div>
               {txStage === "confirmed" && (
@@ -1665,7 +1579,7 @@ contract MedVote {
               </div>
             </div>
 
-            {/* Step-by-Step Blockchain Progress */}
+            {/* Step-by-Step Real Blockchain Progress */}
             <div className="space-y-2 text-xs font-mono">
               <div className="flex items-center gap-2.5">
                 {txStage === "signing" ? (
@@ -1678,7 +1592,7 @@ contract MedVote {
                     txStage === "signing" ? "text-slate-900 font-bold" : "text-slate-500"
                   }
                 >
-                  1. Tanda Tangan Kriptografi Wallet ({currentWallet.address.slice(0, 8)}...)
+                  1. Tanda Tangan ECDSA Wallet ({activeCredential.address.slice(0, 8)}...)
                 </span>
               </div>
 
@@ -1695,7 +1609,7 @@ contract MedVote {
                     txStage === "broadcasting" ? "text-slate-900 font-bold" : "text-slate-500"
                   }
                 >
-                  2. Sinkronisasi Blok Live Polygon Amoy RPC
+                  2. Broadcast eth_sendRawTransaction ke Node EVM
                 </span>
               </div>
 
@@ -1710,25 +1624,32 @@ contract MedVote {
                 <span
                   className={txStage === "mining" ? "text-slate-900 font-bold" : "text-slate-500"}
                 >
-                  3. Kalkulasi Hash SHA-256 &amp; Kunci ke Persistent Ledger
+                  3. Eksekusi Smart Contract &amp; Konfirmasi Blok
                 </span>
               </div>
             </div>
 
-            {/* Confirmed Receipt */}
+            {/* Confirmed Receipt with Real Blockscout Link */}
             {txStage === "confirmed" && (
-              <div className="p-3 rounded-lg bg-slate-50 border border-sky-200 space-y-1 font-mono text-[10.5px]">
-                <div className="text-sky-700 font-bold">BUKTI KRIPTOGRAFI ON-CHAIN:</div>
-                <div className="text-slate-700 break-all">
-                  <span className="text-slate-400">SHA-256 TxHash:</span> {latestTxHash}
+              <div className="p-3 rounded-lg bg-slate-50 border border-sky-200 space-y-1.5 font-mono text-[10.5px]">
+                <div className="flex items-center justify-between">
+                  <span className="text-sky-700 font-bold">BUKTI TRANSAKSI ON-CHAIN:</span>
+                  <a
+                    href={`${MEDVOTE_EXPLORER_BASE}/tx/${latestTxHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-sky-600 hover:text-sky-800 font-bold underline"
+                  >
+                    <span>Buka di Blockscout</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
                 </div>
                 <div className="text-slate-700 break-all">
-                  <span className="text-slate-400">Signature:</span>{" "}
-                  {latestSignature.slice(0, 34)}...
+                  <span className="text-slate-400">TxHash:</span> {latestTxHash}
                 </div>
                 <div className="flex items-center justify-between text-sky-700 font-bold pt-1">
-                  <span>Polygon Block: #{currentBlock}</span>
-                  <span>Status: IMMUTABLE</span>
+                  <span>Confirmed Block: #{latestBlockNum}</span>
+                  <span>Contract: {MEDVOTE_CONTRACT_ADDRESS.slice(0, 10)}...</span>
                 </div>
               </div>
             )}
@@ -1743,7 +1664,7 @@ contract MedVote {
                   }}
                   className="flex-1 py-2 rounded-lg bg-sky-500 hover:bg-sky-600 text-white font-mono text-xs font-bold uppercase cursor-pointer shadow-xs"
                 >
-                  Lihat Live Leaderboard
+                  Lihat Rekapitulasi &amp; Log
                 </button>
                 <button
                   type="button"
@@ -1754,174 +1675,6 @@ contract MedVote {
                 </button>
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* =====================================================================
-          6. LIVE BLOCKCHAIN & CRYPTOGRAPHIC PROOF VERIFIER MODAL
-          NOTE: Strictly contained inside WorkView using "absolute inset-0 z-50"
-         ===================================================================== */}
-      {isVerifyModalOpen && (
-        <div
-          className="absolute inset-0 z-50 bg-slate-900/55 backdrop-blur-xs flex items-center justify-center p-4"
-          onClick={() => setIsVerifyModalOpen(false)}
-        >
-          <div
-            className="w-full max-w-lg rounded-2xl bg-white border-2 border-sky-400 p-5 shadow-2xl space-y-3.5 text-xs"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-              <div className="flex items-center gap-2">
-                <Cpu className="w-5 h-5 text-sky-500" />
-                <span className="font-extrabold text-sm text-slate-900">
-                  Verifikasi Keaslian DApp &amp; Bukti Kriptografi
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsVerifyModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {isVerifyingChain ? (
-              <div className="py-8 flex flex-col items-center justify-center gap-2 text-sky-600 font-mono">
-                <Loader2 className="w-7 h-7 animate-spin" />
-                <span>Menghubungi Node RPC Polygon Amoy &amp; Memeriksa Rantai Hash SHA-256...</span>
-              </div>
-            ) : (
-              chainVerifiedResult && (
-                <div className="space-y-2.5">
-                  <div className="p-3 rounded-lg bg-sky-50 border border-sky-200 space-y-1.5">
-                    <div className="flex items-center justify-between font-mono font-bold text-sky-800">
-                      <span>1. KONEKSI LIVE RPC POLYGON AMOY</span>
-                      <span className="px-2 py-0.5 rounded bg-sky-500 text-white text-[10px]">
-                        CONNECTED ({chainVerifiedResult.latency}ms)
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-600">
-                      Terhubung langsung ke endpoint JSON-RPC{" "}
-                      <code className="text-sky-700 font-mono">{MEDVOTE_RPC_URL}</code>. Nomor blok
-                      aktual jaringan saat ini: <strong>#{chainVerifiedResult.liveBlock}</strong>.
-                    </p>
-                  </div>
-
-                  <div className="p-3 rounded-lg bg-sky-50 border border-sky-200 space-y-1.5">
-                    <div className="flex items-center justify-between font-mono font-bold text-sky-800">
-                      <span>2. INTEGRITAS RANTAI HASH SHA-256 (MERKLE LINK)</span>
-                      <span className="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px]">
-                        {chainVerifiedResult.valid ? "100% VALID" : "TAMPERED"}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-600">
-                      Telah diverifikasi <strong>{chainVerifiedResult.blocksChecked} blok</strong>.
-                      Setiap transaksi menggunakan{" "}
-                      <code className="text-sky-700 font-mono">
-                        window.crypto.subtle.digest(&apos;SHA-256&apos;)
-                      </code>{" "}
-                      di mana <code className="text-sky-700 font-mono">parentHash</code> blok baru
-                      mengunci <code className="text-sky-700 font-mono">txHash</code> blok sebelumnya.
-                    </p>
-                  </div>
-
-                  <div className="p-3 rounded-lg bg-sky-50 border border-sky-200 space-y-1.5">
-                    <div className="flex items-center justify-between font-mono font-bold text-sky-800">
-                      <span>3. PERSISTENT LEDGER (ANTI-RESET SAAT REFRESH)</span>
-                      <span className="px-2 py-0.5 rounded bg-sky-500 text-white text-[10px]">
-                        ACTIVE
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-600">
-                      Seluruh suara, status DPT Whitelist, dan log blok disimpan secara sinkron ke{" "}
-                      <code className="text-sky-700 font-mono">/api/medvote</code> dan{" "}
-                      <code className="text-sky-700 font-mono">localStorage</code>. Silakan tekan{" "}
-                      <strong>F5 / Refresh Browser</strong> — hasil pemilihan tidak akan kembali ke
-                      semula!
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsVerifyModalOpen(false)}
-                    className="w-full py-2 rounded-lg bg-sky-500 hover:bg-sky-600 text-white font-mono text-xs font-bold uppercase cursor-pointer"
-                  >
-                    Tutup Verifikasi
-                  </button>
-                </div>
-              )
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* =====================================================================
-          7. BLOCKCHAIN EVENT INSPECTOR MODAL
-          NOTE: Strictly contained inside WorkView using "absolute inset-0 z-50"
-         ===================================================================== */}
-      {inspectedEvent && (
-        <div
-          className="absolute inset-0 z-50 bg-slate-900/55 backdrop-blur-xs flex items-center justify-center p-4"
-          onClick={() => setInspectedEvent(false as unknown as null)}
-        >
-          <div
-            className="w-full max-w-lg rounded-xl bg-white border-2 border-sky-400 p-4 space-y-3 font-mono text-xs text-slate-900 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <span className="font-bold text-sky-600">
-                Polygon Amoy Block Explorer &bull; Cryptographic Proof
-              </span>
-              <button
-                type="button"
-                onClick={() => setInspectedEvent(null)}
-                className="text-slate-400 hover:text-slate-700 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="space-y-1.5 text-[11px]">
-              <div>
-                <span className="text-slate-400">Event Name:</span>{" "}
-                <span className="text-sky-700 font-bold">{inspectedEvent.eventName}</span>
-              </div>
-              <div className="break-all">
-                <span className="text-slate-400">SHA-256 TxHash:</span>{" "}
-                <span className="text-slate-900 font-semibold">{inspectedEvent.txHash}</span>
-              </div>
-              <div className="break-all">
-                <span className="text-slate-400">Parent Block Hash:</span>{" "}
-                <span className="text-slate-600">{inspectedEvent.parentHash}</span>
-              </div>
-              {inspectedEvent.signature && (
-                <div className="break-all">
-                  <span className="text-slate-400">Cryptographic Signature:</span>{" "}
-                  <span className="text-sky-700">{inspectedEvent.signature}</span>
-                </div>
-              )}
-              <div>
-                <span className="text-slate-400">Polygon Block Number:</span>{" "}
-                <span className="text-slate-900 font-bold">
-                  #{inspectedEvent.blockNumber} (Confirmed)
-                </span>
-              </div>
-              <div>
-                <span className="text-slate-400">Actor Wallet:</span>{" "}
-                <span className="text-slate-900">{inspectedEvent.voterOrActor}</span>
-              </div>
-              {inspectedEvent.candidateName && (
-                <div>
-                  <span className="text-slate-400">Candidate Payload:</span>{" "}
-                  <span className="text-sky-700 font-bold">{inspectedEvent.candidateName}</span>
-                </div>
-              )}
-              <div>
-                <span className="text-slate-400">Gas Consumed:</span>{" "}
-                <span className="text-slate-900">{inspectedEvent.gasUsed} units</span>
-              </div>
-            </div>
           </div>
         </div>
       )}

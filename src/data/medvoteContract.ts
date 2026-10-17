@@ -14,267 +14,120 @@ export interface MedVoteCandidate {
 
 export interface OnChainAuditEvent {
   txHash: string;
-  parentHash: string;
   blockNumber: number;
-  eventName: "VoteCast" | "VotersWhitelisted" | "CandidateAdded" | "ElectionStatusChanged";
+  eventName: "VoteCast" | "VoterWhitelisted" | "VotersWhitelistedBatch" | "CandidateAdded";
   voterOrActor: string;
-  voterLabel?: string;
+  voterLabel: string;
   candidateId?: number;
   candidateName?: string;
   timestamp: string;
-  gasUsed: string;
-  signature?: string;
 }
 
-export interface DoctorWalletProfile {
-  address: string;
+export interface DoctorWalletCredential {
+  id: string;
   name: string;
   department: string;
-  role: "voter" | "admin" | "unregistered";
-  isWhitelisted: boolean;
-  hasVoted: boolean;
-  votedCandidateId: number | null;
-  txHash?: string;
+  role: "voter" | "admin";
+  address: string;
+  privateKey: string;
 }
 
-export const MEDVOTE_CONTRACT_ADDRESS = "0x7F4c89A2d3eB1095F8160c9E239A1d2B942e881A";
-export const MEDVOTE_NETWORK_NAME = "Polygon Amoy Testnet";
-export const MEDVOTE_CHAIN_ID = 80002;
-export const MEDVOTE_RPC_URL = "https://rpc-amoy.polygon.technology";
-export const MEDVOTE_EXPLORER_URL = `https://amoy.polygonscan.com/address/${MEDVOTE_CONTRACT_ADDRESS}`;
+export const MEDVOTE_CONTRACT_ADDRESS = "0x31A5b9fb29304092626e06d720AC471c7aFa3aA5";
+export const MEDVOTE_DEPLOY_TX_HASH =
+  "0x290fb28b49072787fa0621f2b2a1b789bcbcde3302a8012403de76b4e18ad7a5";
+export const MEDVOTE_DEPLOY_BLOCK = 37438715;
+export const MEDVOTE_NETWORK_NAME = "Stability EVM Testnet";
+export const MEDVOTE_CHAIN_ID = 20180427;
+export const MEDVOTE_RPC_URL = "https://rpc.testnet.stabilityprotocol.com/zgt/try-it-out";
+export const MEDVOTE_EXPLORER_BASE = "https://stability-testnet.blockscout.com";
+export const MEDVOTE_EXPLORER_URL = `${MEDVOTE_EXPLORER_BASE}/address/${MEDVOTE_CONTRACT_ADDRESS}`;
 
-/**
- * Compute real cryptographic SHA-256 hash using Web Crypto API (SubtleCrypto)
- */
-export async function computeSha256Hex(payload: string): Promise<string> {
-  if (typeof window !== "undefined" && window.crypto && window.crypto.subtle) {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(payload);
-    const hashBuffer = await window.crypto.subtle.digest("SHA-256", data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-    return "0x" + hashHex;
-  }
-  // Fallback deterministic hash if SubtleCrypto unavailable
-  let h1 = 0xdeadbeef ^ payload.length;
-  let h2 = 0x41c6ce57 ^ payload.length;
-  for (let i = 0, ch; i < payload.length; i++) {
-    ch = payload.charCodeAt(i);
-    h1 = Math.imul(h1 ^ ch, 2654435761);
-    h2 = Math.imul(h2 ^ ch, 1597334677);
-  }
-  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-  const hex =
-    (h1 >>> 0).toString(16).padStart(8, "0") +
-    (h2 >>> 0).toString(16).padStart(8, "0");
-  return "0x" + hex.repeat(4);
-}
+export const CANDIDATE_PROGRAMS_MAP: Record<number, string[]> = {
+  0: [
+    "Digitalisasi Clinical Pathway & E-Medical Audit berbasis standar akreditasi paripurna",
+    "Pembentukan tim advokasi & pendampingan medikolegal 24 jam bagi seluruh staf medis",
+    "Transparansi insentif jasa medis dan percepatan rekomendasi surat kewenangan klinis (RKK)",
+  ],
+  1: [
+    "Audit medis kolaboratif tanpa budaya menyalahkan (No-Blame Culture Clinical Review)",
+    "Program dana hibah pendidikan berkelanjutan (CME/Simposium/Fellowship) staf medis",
+    "Integrasi sistem mutu komite medik dengan rekam medis elektronik (RME) rumah sakit",
+  ],
+  2: [
+    "Prioritas peremajaan instrumen kamar operasi, ICU, dan poliklinik spesialis",
+    "Standarisasi beban jaga dan remunerasi berkeadilan bagi dokter subspesialis & umum",
+    "Forum komunikasi bulanan terbuka antara Komite Medik dan jajaran Direksi RSUD",
+  ],
+};
 
-export const INITIAL_CANDIDATES: MedVoteCandidate[] = [
+export const ONCHAIN_WALLET_CREDENTIALS: DoctorWalletCredential[] = [
   {
-    id: 0,
-    number: "01",
-    name: "dr. Hendra Wijaya, Sp.PD-KGEH, FINASIM",
-    specialist: "Spesialis Penyakit Dalam — Konsultan Gastroentero-Hepatologi",
-    department: "KSM Penyakit Dalam",
-    nip: "19780412 200501 1 004",
-    experience: "18 Tahun Pengabdian Klinis",
-    visionMission:
-      "Transformasi tata kelola klinis berbasis bukti (Evidence-Based Medicine), kemandirian kredensialing staf medis, serta perlindungan hukum dokter yang responsif dan berkeadilan.",
-    programs: [
-      "Digitalisasi Clinical Pathway & E-Medical Audit berbasis standar akreditasi paripurna",
-      "Pembentukan tim advokasi & pendampingan medikolegal 24 jam bagi seluruh staf medis",
-      "Transparansi insentif jasa medis dan percepatan rekomendasi surat kewenangan klinis (RKK)",
-    ],
-    avatarUrl:
-      "https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&w=600&q=80",
-    voteCount: 38,
-  },
-  {
-    id: 1,
-    number: "02",
-    name: "dr. Siti Nurbaya, Sp.A(K), M.Kes",
-    specialist: "Spesialis Kesehatan Anak — Konsultan Tumbuh Kembang",
-    department: "KSM Kesehatan Anak",
-    nip: "19810923 200801 2 009",
-    experience: "15 Tahun Pengabdian Klinis",
-    visionMission:
-      "Mewujudkan Komite Medik yang inklusif, berorientasi pada keselamatan pasien (Patient Safety), dan harmonisasi beban kerja serta kesejahteraan dokter spesialis maupun dokter umum.",
-    programs: [
-      "Audit medis kolaboratif tanpa budaya menyalahkan (No-Blame Culture Clinical Review)",
-      "Program dana hibah pendidikan berkelanjutan (CME/Simposium/Fellowship) staf medis",
-      "Integrasi sistem mutu komite medik dengan rekam medis elektronik (RME) rumah sakit",
-    ],
-    avatarUrl:
-      "https://images.unsplash.com/photo-1594824476967-48c8b964273f?auto=format&fit=crop&w=600&q=80",
-    voteCount: 44,
-  },
-  {
-    id: 2,
-    number: "03",
-    name: "dr. Bambang Prakoso, Sp.B-KBD, FICS",
-    specialist: "Spesialis Bedah — Konsultan Bedah Digestif",
-    department: "KSM Bedah Sentral",
-    nip: "19761105 200312 1 002",
-    experience: "20 Tahun Pengabdian Klinis",
-    visionMission:
-      "Modernisasi standar prosedur operasional tindakan medis, penguatan etika disiplin profesi yang objektif, dan akselerasi pengadaan alat kesehatan berteknologi tinggi.",
-    programs: [
-      "Prioritas peremajaan instrumen kamar operasi, ICU, dan poliklinik spesialis",
-      "Standarisasi beban jaga dan remunerasi berkeadilan bagi dokter subspesialis & umum",
-      "Forum komunikasi bulanan terbuka antara Komite Medik dan jajaran Direksi RSUD",
-    ],
-    avatarUrl:
-      "https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&w=600&q=80",
-    voteCount: 31,
-  },
-];
-
-export const DEMO_WALLET_PROFILES: DoctorWalletProfile[] = [
-  {
-    address: "0x71C95911E9a5D330f4D621842EC243EE1343289A",
+    id: "voter-1",
     name: "dr. Ahmad Fauzi, Sp.JP(K), FIHA",
-    department: "KSM Jantung & Pembuluh Darah (Pemilih Sah)",
+    department: "KSM Jantung & Pembuluh Darah",
     role: "voter",
-    isWhitelisted: true,
-    hasVoted: false,
-    votedCandidateId: null,
+    address: "0x78FaBc486213Db4951142EcE119e01587cA13C39",
+    privateKey: "0xd6cf3fdfbaa14cba2595781b4536a9b4e51a4e8601fa13304a3e4c1ad45452ea",
   },
   {
-    address: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
-    name: "dr. Ratna Sari, Sp.OG — Ketua Panitia Pemilihan",
-    department: "Panitia Pemilihan Komite Medik (Election Admin)",
+    id: "voter-2",
+    name: "dr. Rina Kartika, Sp.An-TI",
+    department: "KSM Anestesiologi & Terapi Intensif",
+    role: "voter",
+    address: "0x4e30b1093191D96b98c6fb6b4049546E0faf8BCe",
+    privateKey: "0x6340fd03f811215f6fcc96f556e6c18a4f52a07b22ba245cdebfc4165ea72ec6",
+  },
+  {
+    id: "voter-3",
+    name: "dr. Farhan Maulana, Sp.Rad",
+    department: "KSM Radiologi Klinik",
+    role: "voter",
+    address: "0xb3980e4238A88d975f72f708084B5F10576a073D",
+    privateKey: "0xc30697e01aab9a6e027f18da7ad617e926f59137fda79792e28c17b9d138cc7a",
+  },
+  {
+    id: "unregistered-1",
+    name: "dr. Kevin Pratama, Sp.OT",
+    department: "KSM Orthopaedi & Traumatologi",
+    role: "voter",
+    address: "0x99b61dC9d2005a6806a50e988aEF69AF350522Ea",
+    privateKey: "0x2ec3ac0057fa5cc05bd671e646cff22ebac6a0cca5f756770f5d9e7381a2fc4b",
+  },
+  {
+    id: "admin",
+    name: "Sekretariat Panitia Pemilihan Komite Medik",
+    department: "Komisi Pemilihan Independen (Non-Pemilih)",
     role: "admin",
-    isWhitelisted: true,
-    hasVoted: false,
-    votedCandidateId: null,
-  },
-  {
-    address: "0x90F79bf6EB2c4f870365E785982E1f101E93b906",
-    name: "dr. Kevin Pratama (Dokter Tamu / Belum Whitelist)",
-    department: "Belum Terdaftar di DPT Komite Medik",
-    role: "unregistered",
-    isWhitelisted: false,
-    hasVoted: false,
-    votedCandidateId: null,
+    address: "0xDD2F7d8F346d0414e73f4F270053000b6db63BB4",
+    privateKey: "0x982e2dddb07edc5a2eb577cc1dbce068fb2ffcf52567407dba2262c6d268e357",
   },
 ];
 
-export const INITIAL_AUDIT_EVENTS: OnChainAuditEvent[] = [
-  {
-    txHash: "0x94b8e2f10a3c7d6e8f21b4c9a120d8e7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1",
-    parentHash: "0x61c3d9a82b5f4e107c8a9d2e3f4b5a6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f23",
-    blockNumber: 14892310,
-    eventName: "VoteCast",
-    voterOrActor: "0x8A1f...39C2",
-    voterLabel: "Anggota KSM Anestesiologi (Terverifikasi)",
-    candidateId: 1,
-    candidateName: "dr. Siti Nurbaya, Sp.A(K), M.Kes",
-    timestamp: "3 menit yang lalu",
-    gasUsed: "46,210",
-    signature: "0x4c8f92e1a7b3d5091e2f8a4b6c7d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f708191b",
-  },
-  {
-    txHash: "0x61c3d9a82b5f4e107c8a9d2e3f4b5a6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f23",
-    parentHash: "0x28f7a6c5d4e3b2a1908f7e6d5c4b3a29182736455463728190a1b2c3d4e5f607",
-    blockNumber: 14892284,
-    eventName: "VoteCast",
-    voterOrActor: "0x4E9b...11A8",
-    voterLabel: "Anggota KSM Radiologi (Terverifikasi)",
-    candidateId: 0,
-    candidateName: "dr. Hendra Wijaya, Sp.PD-KGEH, FINASIM",
-    timestamp: "8 menit yang lalu",
-    gasUsed: "46,198",
-    signature: "0x91a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f801c",
-  },
-  {
-    txHash: "0x28f7a6c5d4e3b2a1908f7e6d5c4b3a29182736455463728190a1b2c3d4e5f607",
-    parentHash: "0x11a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f80",
-    blockNumber: 14892190,
-    eventName: "VoteCast",
-    voterOrActor: "0xD21c...74F0",
-    voterLabel: "Anggota KSM Bedah Saraf (Terverifikasi)",
-    candidateId: 2,
-    candidateName: "dr. Bambang Prakoso, Sp.B-KBD, FICS",
-    timestamp: "15 menit yang lalu",
-    gasUsed: "46,210",
-    signature: "0x7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e1b",
-  },
-  {
-    txHash: "0x11a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f80",
-    parentHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
-    blockNumber: 14891802,
-    eventName: "VotersWhitelisted",
-    voterOrActor: "0x3C44...93BC",
-    voterLabel: "Panitia Pemilihan (Batch DPT 125 Dokter)",
-    timestamp: "2 jam yang lalu",
-    gasUsed: "184,520",
-    signature: "0x3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a1c",
-  },
-];
-
-export const MEDVOTE_ABI_SUMMARY = [
-  {
-    type: "constructor",
-    inputs: [
-      { name: "_electionTitle", type: "string" },
-      { name: "_hospitalName", type: "string" },
-    ],
-  },
-  {
-    type: "function",
-    name: "vote",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "_candidateId", type: "uint256" }],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "whitelistVotersBatch",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "_doctorWallets", type: "address[]" }],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "addCandidate",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "_name", type: "string" },
-      { name: "_specialist", type: "string" },
-      { name: "_visionMission", type: "string" },
-      { name: "_avatarUrl", type: "string" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "getResults",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [
-      {
-        name: "",
-        type: "tuple[]",
-        components: [
-          { name: "id", type: "uint256" },
-          { name: "name", type: "string" },
-          { name: "specialist", type: "string" },
-          { name: "visionMission", type: "string" },
-          { name: "avatarUrl", type: "string" },
-          { name: "voteCount", type: "uint256" },
-        ],
-      },
-    ],
-  },
-  {
-    type: "event",
-    name: "VoteCast",
-    inputs: [
-      { name: "voter", type: "address", indexed: true },
-      { name: "candidateId", type: "uint256", indexed: true },
-      { name: "timestamp", type: "uint256", indexed: false },
-    ],
-  },
+export const MEDVOTE_ABI = [
+  "error UnauthorizedAdmin()",
+  "error AdminCannotVote()",
+  "error ElectionNotActive()",
+  "error VoterNotWhitelisted()",
+  "error VoterAlreadyVoted()",
+  "error InvalidCandidateId()",
+  "error EmptyCandidateName()",
+  "error EmptyBatchList()",
+  "event CandidateAdded(uint256 indexed candidateId, string number, string name, string department)",
+  "event VoterWhitelisted(address indexed voter, string doctorName, string department, address indexed addedBy)",
+  "event VotersWhitelistedBatch(uint256 count, address indexed addedBy)",
+  "event VoteCast(address indexed voter, string voterName, uint256 indexed candidateId, string candidateName, uint256 timestamp)",
+  "event ElectionStatusChanged(bool isActive, uint256 timestamp)",
+  "function electionAdmin() view returns (address)",
+  "function electionTitle() view returns (string)",
+  "function hospitalName() view returns (string)",
+  "function isElectionActive() view returns (bool)",
+  "function totalVotesCast() view returns (uint256)",
+  "function totalWhitelisted() view returns (uint256)",
+  "function getResults() view returns (tuple(uint256 id, string number, string name, string specialist, string department, string nip, string experience, string visionMission, string avatarUrl, uint256 voteCount)[])",
+  "function getVoterStatus(address _voter) view returns (bool isWhitelisted, bool hasVoted, uint256 votedCandidateId, uint256 votedTimestamp, string doctorName, string department)",
+  "function vote(uint256 _candidateId)",
+  "function registerVoter(address _doctorWallet, string _doctorName, string _department)",
+  "function whitelistVotersBatch(address[] _doctorWallets)",
+  "function addCandidate(string _name, string _specialist, string _department, string _nip, string _experience, string _visionMission, string _avatarUrl)",
+  "function setElectionStatus(bool _isActive)",
 ];

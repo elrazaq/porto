@@ -9,7 +9,7 @@ export const metadata = {
 
 export default function MedVotePage() {
   return (
-    <div className="w-screen h-screen overflow-hidden bg-[#0b1120]">
+    <div className="w-screen h-screen overflow-hidden bg-slate-50">
       <MedVoteApp deviceMode="desktop" />
     </div>
   );

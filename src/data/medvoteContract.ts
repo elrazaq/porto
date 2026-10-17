@@ -14,6 +14,7 @@ export interface MedVoteCandidate {
 
 export interface OnChainAuditEvent {
   txHash: string;
+  parentHash: string;
   blockNumber: number;
   eventName: "VoteCast" | "VotersWhitelisted" | "CandidateAdded" | "ElectionStatusChanged";
   voterOrActor: string;
@@ -22,6 +23,7 @@ export interface OnChainAuditEvent {
   candidateName?: string;
   timestamp: string;
   gasUsed: string;
+  signature?: string;
 }
 
 export interface DoctorWalletProfile {
@@ -38,7 +40,36 @@ export interface DoctorWalletProfile {
 export const MEDVOTE_CONTRACT_ADDRESS = "0x7F4c89A2d3eB1095F8160c9E239A1d2B942e881A";
 export const MEDVOTE_NETWORK_NAME = "Polygon Amoy Testnet";
 export const MEDVOTE_CHAIN_ID = 80002;
+export const MEDVOTE_RPC_URL = "https://rpc-amoy.polygon.technology";
 export const MEDVOTE_EXPLORER_URL = `https://amoy.polygonscan.com/address/${MEDVOTE_CONTRACT_ADDRESS}`;
+
+/**
+ * Compute real cryptographic SHA-256 hash using Web Crypto API (SubtleCrypto)
+ */
+export async function computeSha256Hex(payload: string): Promise<string> {
+  if (typeof window !== "undefined" && window.crypto && window.crypto.subtle) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(payload);
+    const hashBuffer = await window.crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+    return "0x" + hashHex;
+  }
+  // Fallback deterministic hash if SubtleCrypto unavailable
+  let h1 = 0xdeadbeef ^ payload.length;
+  let h2 = 0x41c6ce57 ^ payload.length;
+  for (let i = 0, ch; i < payload.length; i++) {
+    ch = payload.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  const hex =
+    (h1 >>> 0).toString(16).padStart(8, "0") +
+    (h2 >>> 0).toString(16).padStart(8, "0");
+  return "0x" + hex.repeat(4);
+}
 
 export const INITIAL_CANDIDATES: MedVoteCandidate[] = [
   {
@@ -133,6 +164,7 @@ export const DEMO_WALLET_PROFILES: DoctorWalletProfile[] = [
 export const INITIAL_AUDIT_EVENTS: OnChainAuditEvent[] = [
   {
     txHash: "0x94b8e2f10a3c7d6e8f21b4c9a120d8e7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1",
+    parentHash: "0x61c3d9a82b5f4e107c8a9d2e3f4b5a6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f23",
     blockNumber: 14892310,
     eventName: "VoteCast",
     voterOrActor: "0x8A1f...39C2",
@@ -141,9 +173,11 @@ export const INITIAL_AUDIT_EVENTS: OnChainAuditEvent[] = [
     candidateName: "dr. Siti Nurbaya, Sp.A(K), M.Kes",
     timestamp: "3 menit yang lalu",
     gasUsed: "46,210",
+    signature: "0x4c8f92e1a7b3d5091e2f8a4b6c7d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f708191b",
   },
   {
     txHash: "0x61c3d9a82b5f4e107c8a9d2e3f4b5a6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f23",
+    parentHash: "0x28f7a6c5d4e3b2a1908f7e6d5c4b3a29182736455463728190a1b2c3d4e5f607",
     blockNumber: 14892284,
     eventName: "VoteCast",
     voterOrActor: "0x4E9b...11A8",
@@ -152,9 +186,11 @@ export const INITIAL_AUDIT_EVENTS: OnChainAuditEvent[] = [
     candidateName: "dr. Hendra Wijaya, Sp.PD-KGEH, FINASIM",
     timestamp: "8 menit yang lalu",
     gasUsed: "46,198",
+    signature: "0x91a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f801c",
   },
   {
     txHash: "0x28f7a6c5d4e3b2a1908f7e6d5c4b3a29182736455463728190a1b2c3d4e5f607",
+    parentHash: "0x11a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f80",
     blockNumber: 14892190,
     eventName: "VoteCast",
     voterOrActor: "0xD21c...74F0",
@@ -163,15 +199,18 @@ export const INITIAL_AUDIT_EVENTS: OnChainAuditEvent[] = [
     candidateName: "dr. Bambang Prakoso, Sp.B-KBD, FICS",
     timestamp: "15 menit yang lalu",
     gasUsed: "46,210",
+    signature: "0x7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e1b",
   },
   {
     txHash: "0x11a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f80",
+    parentHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
     blockNumber: 14891802,
     eventName: "VotersWhitelisted",
     voterOrActor: "0x3C44...93BC",
     voterLabel: "Panitia Pemilihan (Batch DPT 125 Dokter)",
     timestamp: "2 jam yang lalu",
     gasUsed: "184,520",
+    signature: "0x3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a1c",
   },
 ];
 

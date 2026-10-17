@@ -417,14 +417,14 @@ export async function generateResumePdf(): Promise<void> {
     ]
   );
 
-  // Project 3: Smart TV Digital Signage
+  // Project 3: MedVote Web3 DApp & Smart TV Signage
   drawProject(
-    "Smart TV Digital Signage & Prayer Calculation System",
-    "Next.js • Astronomical GPS Calculation • Offline Cache",
-    "Enterprise digital signage for TV displays in community mosques and educational centers.",
+    "MedVote DApp (Blockchain E-Voting RSUD) & Smart TV Digital Signage",
+    "Solidity 0.8 • Polygon EVM • Next.js • Kotlin Android TV",
+    "Tamper-proof hospital committee election DApp & 16:9 Android TV prayer signage system.",
     [
-      "Automated astronomical prayer times calculation with high-precision GPS coordinate algorithms.",
-      "Dynamic scrolling news ticker, offline fallback resilience, and orientation support.",
+      "Solidity Smart Contract with 1-Doctor-1-Wallet whitelist, anti-double voting, and real-time on-chain audit logs.",
+      "Automated astronomical Kemenag prayer times engine with D-Pad remote support and OLED anti-burn-in protection.",
     ]
   );
 

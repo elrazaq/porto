@@ -29,6 +29,7 @@ import { RestaurantPosDemo } from "./demos/RestaurantPosDemo";
 import { TravelAstroDemo } from "./demos/TravelAstroDemo";
 import { MasjidTvDemo } from "./demos/MasjidTvDemo";
 import { AbsensiPegawaiDemo } from "./demos/AbsensiPegawaiDemo";
+import { MedVoteDemo } from "./demos/MedVoteDemo";
 
 interface WorkViewProps {
   onBack?: () => void;
@@ -386,6 +387,8 @@ export function WorkView({ onBack, onNavigateHire }: WorkViewProps) {
                 <MasjidTvDemo />
               ) : currentProject.id === "absensi-pegawai-integrated" ? (
                 <AbsensiPegawaiDemo deviceMode={deviceMode} onSwitchMode={setDeviceMode} />
+              ) : currentProject.id === "medvote-web3-dapp" ? (
+                <MedVoteDemo deviceMode={deviceMode} />
               ) : (
                 <CoffeeShopDemo />
               )}

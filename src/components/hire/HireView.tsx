@@ -270,6 +270,16 @@ export function HireView({ onBack }: HireViewProps) {
                 </div>
 
                 <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                  <a
+                    href={`https://wa.me/6282169441179?text=${encodeURIComponent(
+                      `Hello Abdul Razak, I just submitted a project proposal on your portfolio:\n\n• Name/Org: ${name}\n• Email: ${email}\n• Project: ${title}\n• Category: ${category}\n• Budget: ${budget}\n• Details: ${description}`
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2 border border-emerald-400 bg-emerald-700/80 hover:bg-emerald-600 text-white text-xs font-chess font-bold tracking-wider uppercase transition-all cursor-pointer"
+                  >
+                    Fast-Track via WhatsApp
+                  </a>
                   <button
                     type="button"
                     onClick={handleReset}

@@ -1,4 +1,5 @@
 import fs from "fs";
+import os from "os";
 import path from "path";
 import crypto from "crypto";
 
@@ -15,40 +16,87 @@ export interface Proposal {
   status: "unread" | "replied" | "archived";
 }
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const DATA_FILE = path.join(DATA_DIR, "proposals.json");
+declare global {
+  // eslint-disable-next-line no-var
+  var __ELRAZAQ_PROPOSALS_STORE__: Proposal[] | undefined;
+}
 
-// Ensure data folder and file exist
-function ensureDataFile() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+function getMemoryStore(): Proposal[] {
+  if (!globalThis.__ELRAZAQ_PROPOSALS_STORE__) {
+    globalThis.__ELRAZAQ_PROPOSALS_STORE__ = [];
   }
-  if (!fs.existsSync(DATA_FILE)) {
-    fs.writeFileSync(DATA_FILE, JSON.stringify([], null, 2), "utf8");
+  return globalThis.__ELRAZAQ_PROPOSALS_STORE__;
+}
+
+function resolveDataFilePath(): string | null {
+  // Try project data/ directory first (works in local dev & VPS)
+  const localDir = path.join(process.cwd(), "data");
+  const localFile = path.join(localDir, "proposals.json");
+  try {
+    if (!fs.existsSync(localDir)) {
+      fs.mkdirSync(localDir, { recursive: true });
+    }
+    if (!fs.existsSync(localFile)) {
+      fs.writeFileSync(localFile, JSON.stringify([], null, 2), "utf8");
+    }
+    fs.accessSync(localFile, fs.constants.W_OK);
+    return localFile;
+  } catch {
+    // Fallback to os.tmpdir() for read-only serverless environments (Vercel / AWS Lambda)
+    try {
+      const tmpDir = path.join(os.tmpdir(), "elrazaq_portfolio_data");
+      const tmpFile = path.join(tmpDir, "proposals.json");
+      if (!fs.existsSync(tmpDir)) {
+        fs.mkdirSync(tmpDir, { recursive: true });
+      }
+      if (!fs.existsSync(tmpFile)) {
+        const initialData = getMemoryStore();
+        fs.writeFileSync(tmpFile, JSON.stringify(initialData, null, 2), "utf8");
+      }
+      return tmpFile;
+    } catch {
+      return null;
+    }
   }
 }
 
 export function getAllProposals(): Proposal[] {
-  ensureDataFile();
-  try {
-    const raw = fs.readFileSync(DATA_FILE, "utf8");
-    const data = JSON.parse(raw);
-    if (Array.isArray(data)) {
-      return data.sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
+  const dataFile = resolveDataFilePath();
+  if (dataFile) {
+    try {
+      const raw = fs.readFileSync(dataFile, "utf8");
+      const data = JSON.parse(raw);
+      if (Array.isArray(data)) {
+        const sorted = data.sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        globalThis.__ELRAZAQ_PROPOSALS_STORE__ = sorted;
+        return sorted;
+      }
+    } catch (err) {
+      console.error("Warning reading proposals file, using memory store:", err);
     }
-    return [];
-  } catch (err) {
-    console.error("Error reading proposals.json:", err);
-    return [];
+  }
+  return getMemoryStore().sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+}
+
+function persistProposals(proposals: Proposal[]) {
+  globalThis.__ELRAZAQ_PROPOSALS_STORE__ = proposals;
+  const dataFile = resolveDataFilePath();
+  if (dataFile) {
+    try {
+      fs.writeFileSync(dataFile, JSON.stringify(proposals, null, 2), "utf8");
+    } catch (err) {
+      console.error("Warning writing proposals file, kept in memory store:", err);
+    }
   }
 }
 
 export function saveProposal(
   input: Omit<Proposal, "id" | "createdAt" | "status">
 ): Proposal {
-  ensureDataFile();
   const proposals = getAllProposals();
 
   const newProposal: Proposal = {
@@ -65,7 +113,7 @@ export function saveProposal(
   };
 
   proposals.unshift(newProposal);
-  fs.writeFileSync(DATA_FILE, JSON.stringify(proposals, null, 2), "utf8");
+  persistProposals(proposals);
   return newProposal;
 }
 
@@ -73,23 +121,21 @@ export function updateProposalStatus(
   id: string,
   status: "unread" | "replied" | "archived"
 ): Proposal | null {
-  ensureDataFile();
   const proposals = getAllProposals();
   const index = proposals.findIndex((p) => p.id === id);
   if (index === -1) return null;
 
   proposals[index].status = status;
-  fs.writeFileSync(DATA_FILE, JSON.stringify(proposals, null, 2), "utf8");
+  persistProposals(proposals);
   return proposals[index];
 }
 
 export function deleteProposal(id: string): boolean {
-  ensureDataFile();
   const proposals = getAllProposals();
   const filtered = proposals.filter((p) => p.id !== id);
   if (filtered.length === proposals.length) return false;
 
-  fs.writeFileSync(DATA_FILE, JSON.stringify(filtered, null, 2), "utf8");
+  persistProposals(filtered);
   return true;
 }
 

@@ -55,6 +55,29 @@ export async function POST(req: NextRequest) {
       description,
     });
 
+    // Forward notification to developer email (non-blocking)
+    try {
+      await fetch("https://formsubmit.co/ajax/elrazaq185@gmail.com", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          _subject: `[Portfolio Project Proposal] ${title} - ${name}`,
+          Full_Name_or_Organization: name,
+          Work_Email: email,
+          WhatsApp_or_Phone: phone || "-",
+          Project_Title: title,
+          Technical_Category: category || "Full Stack Web",
+          Estimated_Budget: budget || "To Be Discussed",
+          Project_Description: description,
+        }),
+      });
+    } catch (notifyErr) {
+      console.warn("Optional email relay notice:", notifyErr);
+    }
+
     return NextResponse.json(
       {
         success: true,
